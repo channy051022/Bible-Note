@@ -1,0 +1,52 @@
+export const Colors = {
+  light: {
+    text: '#1C1C1E',
+    textSecondary: '#8E8E93',
+    textTertiary: '#AEAEB2',
+    background: '#FFFFFF',
+    secondaryBackground: '#F2F2F7',
+    tertiaryBackground: '#FFFFFF',
+    groupedBackground: '#F2F2F7',
+    card: '#FFFFFF',
+    border: '#E5E5EA',
+    separator: '#C6C6C8',
+    tint: '#007AFF', // iOS System Blue
+    tintLight: '#E5F2FF',
+    accent: '#5856D6', // iOS Purple
+    verseHighlight: '#FFF3C4',
+    versePill: '#E8F1FF',
+    versePillBorder: '#B2D4FF',
+    versePillText: '#0055D6',
+    tabBar: 'rgba(255, 255, 255, 0.85)',
+    tabBarBorder: '#E5E5EA',
+    danger: '#FF3B30',
+    success: '#34C759',
+    gold: '#FF9500',
+  },
+  dark: {
+    text: '#F2F2F7',
+    textSecondary: '#8E8E93',
+    textTertiary: '#636366',
+    background: '#000000',
+    secondaryBackground: '#1C1C1E',
+    tertiaryBackground: '#2C2C2E',
+    groupedBackground: '#1C1C1E',
+    card: '#1C1C1E',
+    border: '#38383A',
+    separator: '#38383A',
+    tint: '#0A84FF', // iOS Dark System Blue
+    tintLight: '#0E305C',
+    accent: '#5E5CE6',
+    verseHighlight: '#3D3516',
+    versePill: '#102A4E',
+    versePillBorder: '#1A4D8C',
+    versePillText: '#64B2FF',
+    tabBar: 'rgba(28, 28, 30, 0.85)',
+    tabBarBorder: '#38383A',
+    danger: '#FF453A',
+    success: '#32D74B',
+    gold: '#FFD60A',
+  },
+};
+
+export type ThemeColors = typeof Colors.light;

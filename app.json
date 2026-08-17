@@ -1,0 +1,17 @@
+﻿{
+  "expo": {
+    "name": "Bible Notes",
+    "slug": "bible-notes-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.biblenotes.app"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "scheme": "biblenotes"
+  }
+}

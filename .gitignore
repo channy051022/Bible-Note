@@ -1,0 +1,46 @@
+﻿# Dependencies
+node_modules/
+package-lock.json.bak
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native builds (Managed workflow generates these locally on run)
+ios/
+android/
+
+# Environment Variables
+.env
+.env*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE & Editors
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.bak
