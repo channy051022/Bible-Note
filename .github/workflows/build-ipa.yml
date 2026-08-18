@@ -26,7 +26,6 @@ jobs:
       - name: Configure Xcode Node Environment
         run: |
           NODE_PATH=$(which node)
-          echo "Node path: $NODE_PATH"
           echo "export NODE_BINARY=$NODE_PATH" > ios/.xcode.env.local
           cat ios/.xcode.env.local
 
@@ -37,7 +36,6 @@ jobs:
 
       - name: Build unsigned iOS Release App
         run: |
-          set -o pipefail
           xcodebuild -workspace ios/SHEPHERD.xcworkspace \
             -scheme SHEPHERD \
             -configuration Release \
@@ -47,6 +45,9 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            DEVELOPMENT_TEAM="" \
+            CODE_SIGN_ENTITLEMENTS="" \
             -destination 'generic/platform=iOS' \
             COMPILER_INDEX_STORE_ENABLE=NO \
             build
