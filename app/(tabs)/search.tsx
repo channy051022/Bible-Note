@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,9 @@ import { BibleRepo } from '../../src/db/bibleRepo';
 import { NotesRepo } from '../../src/db/notesRepo';
 import { useTheme } from '../../src/hooks/useTheme';
 import { SearchBar } from '../../src/components/SearchBar';
-import { BibleSearchMatch } from '../../src/types/bible';
+import { BibleSearchMatch, BibleVersion } from '../../src/types/bible';
 import { NoteSearchMatch } from '../../src/types/note';
+import { getItem, StorageKeys } from '../../src/utils/storage';
 
 type SearchScope = 'bible' | 'notes';
 
@@ -42,7 +43,8 @@ export default function SearchScreen() {
       setIsSearching(true);
       try {
         if (scope === 'bible') {
-          const results = await BibleRepo.searchBible(db, query, 60);
+          const version = getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
+          const results = await BibleRepo.searchBible(db, query, 60, version);
           setBibleResults(results);
         } else {
           const results = await NotesRepo.searchNotes(db, query);

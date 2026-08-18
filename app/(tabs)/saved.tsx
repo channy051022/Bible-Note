@@ -11,13 +11,14 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Ionicons } from '@expo/vector-icons';
 import { BibleRepo } from '../../src/db/bibleRepo';
-import { useTheme, ThemeMode } from '../../src/hooks/useTheme';
-import { Bookmark } from '../../src/types/bible';
+import { useTheme } from '../../src/hooks/useTheme';
+import { Bookmark, BibleVersion } from '../../src/types/bible';
+import { getItem, StorageKeys } from '../../src/utils/storage';
 
 export default function SavedScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
-  const { mode, colors, setThemeMode } = useTheme();
+  const { colors } = useTheme();
 
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -25,7 +26,8 @@ export default function SavedScreen() {
   const loadBookmarks = useCallback(async () => {
     try {
       setIsLoading(true);
-      const data = await BibleRepo.getBookmarks(db);
+      const version = getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
+      const data = await BibleRepo.getBookmarks(db, version);
       setBookmarks(data);
     } catch (err) {
       console.error('Failed to load bookmarks:', err);
@@ -61,53 +63,8 @@ export default function SavedScreen() {
     ]);
   };
 
-  const themeOptions: { label: string; mode: ThemeMode; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { label: 'System', mode: 'system', icon: 'phone-portrait-outline' },
-    { label: 'Light', mode: 'light', icon: 'sunny-outline' },
-    { label: 'Dark', mode: 'dark', icon: 'moon-outline' },
-  ];
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Appearance Settings Section */}
-      <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.settingsTitle, { color: colors.text }]}>Appearance</Text>
-        <View style={styles.themeRow}>
-          {themeOptions.map((opt) => {
-            const isSelected = mode === opt.mode;
-            return (
-              <TouchableOpacity
-                key={opt.mode}
-                style={[
-                  styles.themeBtn,
-                  {
-                    backgroundColor: isSelected ? colors.tint : colors.secondaryBackground,
-                    borderColor: isSelected ? colors.tint : colors.border,
-                  },
-                ]}
-                onPress={() => setThemeMode(opt.mode)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={opt.icon}
-                  size={16}
-                  color={isSelected ? '#FFFFFF' : colors.textSecondary}
-                  style={{ marginRight: 6 }}
-                />
-                <Text
-                  style={[
-                    styles.themeBtnText,
-                    { color: isSelected ? '#FFFFFF' : colors.textSecondary },
-                  ]}
-                >
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
       {/* Bookmarks Section Header */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -168,40 +125,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  settingsCard: {
-    margin: 16,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  settingsTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  themeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  themeBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginHorizontal: 4,
-  },
-  themeBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
   sectionHeader: {
     paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingTop: 14,
+    paddingBottom: 6,
   },
   sectionTitle: {
     fontSize: 18,
@@ -209,6 +136,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
+    paddingTop: 8,
   },
   bookmarkCard: {
     padding: 14,
@@ -251,3 +179,4 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
+

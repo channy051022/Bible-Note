@@ -1,10 +1,11 @@
-﻿import React from 'react';
-import { Tabs } from 'expo-router';
+import React from 'react';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
-import { Platform } from 'react-native';
+import { Platform, TouchableOpacity } from 'react-native';
 
 export default function TabLayout() {
+  const router = useRouter();
   const { colors } = useTheme();
 
   return (
@@ -33,7 +34,17 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Bible',
-          headerTitle: 'E-Bible (KJV)',
+          headerTitle: 'E-Bible',
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => router.push('/settings')}
+              style={{ marginRight: 16, padding: 4 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="settings-outline" size={22} color={colors.text} />
+            </TouchableOpacity>
+          ),
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'book' : 'book-outline'} size={size} color={color} />
           ),

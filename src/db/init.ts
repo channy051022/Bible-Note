@@ -1,4 +1,4 @@
-﻿import * as FileSystemLegacy from 'expo-file-system/legacy';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as FileSystemRoot from 'expo-file-system';
 import { Asset } from 'expo-asset';
 import { type SQLiteDatabase } from 'expo-sqlite';
@@ -31,11 +31,12 @@ export async function copyDatabaseFileIfNotExists(): Promise<void> {
       }
 
       const fileInfo = await FileSystem.getInfoAsync(dbPath);
-      // The complete KJV database is ~16.7MB. If the file doesn't exist, or is an empty/old db (<10MB), copy the asset!
-      const needsCopy = !fileInfo.exists || !fileInfo.size || fileInfo.size < 10000000;
+      // The complete dual-translation database (KJV + Cebuano) is ~23MB.
+      // If the file doesn't exist, or is an older db (<20MB), copy the updated asset!
+      const needsCopy = !fileInfo.exists || !fileInfo.size || fileInfo.size < 20000000;
 
       if (needsCopy) {
-        console.log(`Extracting pre-bundled ${DATABASE_NAME} (16.7MB) to ${dbPath}...`);
+        console.log(`Extracting pre-bundled dual-version ${DATABASE_NAME} (23MB) to ${dbPath}...`);
         if (fileInfo.exists) {
           try {
             await FileSystem.deleteAsync(dbPath, { idempotent: true });
@@ -53,7 +54,7 @@ export async function copyDatabaseFileIfNotExists(): Promise<void> {
             from: sourceUri,
             to: dbPath,
           });
-          console.log('Successfully extracted complete 16.7MB KJV bible.db.');
+          console.log('Successfully extracted complete 23MB KJV + Cebuano bible.db.');
         } else {
           console.warn('Asset downloadAsync did not return localUri or uri.');
         }

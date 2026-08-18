@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -68,9 +68,10 @@ function RootNavigationLayout() {
         <Stack.Screen
           name="reader/picker"
           options={{
-            presentation: 'formSheet',
+            presentation: 'modal',
             headerShown: true,
             title: 'Select Book & Chapter',
+            gestureEnabled: false,
           }}
         />
       </Stack>

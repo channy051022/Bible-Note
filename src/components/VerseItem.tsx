@@ -10,6 +10,7 @@ interface VerseItemProps {
   fontSize?: number;
   onToggleBookmark: (verseNumber: number) => void;
   onAddNote?: (verse: Verse) => void;
+  onPressVerse?: (verse: Verse) => void;
 }
 
 export const VerseItem: React.FC<VerseItemProps> = ({
@@ -18,12 +19,17 @@ export const VerseItem: React.FC<VerseItemProps> = ({
   fontSize = 18,
   onToggleBookmark,
   onAddNote,
+  onPressVerse,
 }) => {
   const { colors } = useTheme();
 
   return (
     <View style={[styles.container, { borderBottomColor: colors.border }]}>
-      <View style={styles.textContainer}>
+      <TouchableOpacity
+        style={styles.textContainer}
+        onPress={() => onPressVerse?.(verse)}
+        activeOpacity={0.65}
+      >
         <Text style={[styles.verseNumber, { color: colors.tint, fontSize: fontSize - 4 }]}>
           {verse.verse}
         </Text>
@@ -39,7 +45,7 @@ export const VerseItem: React.FC<VerseItemProps> = ({
         >
           {verse.text}
         </Text>
-      </View>
+      </TouchableOpacity>
 
       <View style={styles.actions}>
         <TouchableOpacity

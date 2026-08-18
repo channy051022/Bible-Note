@@ -1,4 +1,4 @@
-﻿// Universal Storage Interface for Expo Go & Bare/EAS workflows
+// Universal Storage Interface for Expo Go & Bare/EAS workflows
 interface KeyValueStorage {
   getString: (key: string) => string | undefined;
   set: (key: string, value: string) => void;
@@ -35,6 +35,7 @@ export const StorageKeys = {
   LAST_READ_BOOK: 'last_read_book_id', // number
   LAST_READ_CHAPTER: 'last_read_chapter', // number
   ACTIVE_PLAN_ID: 'active_plan_id', // string
+  BIBLE_VERSION: 'bible_version', // 'KJV' | 'CEB'
 } as const;
 
 export const getItem = <T>(key: string, defaultValue: T): T => {

@@ -13,11 +13,12 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Ionicons } from '@expo/vector-icons';
 import { NotesRepo } from '../../src/db/notesRepo';
-import { useVerseDetector } from '../../src/hooks/useVerseDetector';
+import { useVerseDetector, formatPassageQuote } from '../../src/hooks/useVerseDetector';
 import { useTheme } from '../../src/hooks/useTheme';
 import { RichEditor } from '../../src/components/RichEditor';
 import { VersePreviewModal } from '../../src/components/VersePreviewModal';
 import { TagPill } from '../../src/components/TagPill';
+import { ParsedPassageRef, PassageDetails } from '../../src/types/bible';
 
 export default function NoteDetailScreen() {
   const params = useLocalSearchParams<{
@@ -51,6 +52,7 @@ export default function NoteDetailScreen() {
     isLoadingPassage,
     openVersePreview,
     closeVersePreview,
+    fetchPassageQuote,
   } = useVerseDetector(content);
 
   // Load existing note from SQLite
@@ -150,6 +152,45 @@ export default function NoteDetailScreen() {
     });
   };
 
+  // Automatically insert detected scripture quote block directly into the note
+  const handleInsertVerse = useCallback(
+    async (ref: ParsedPassageRef) => {
+      try {
+        const { quote } = await fetchPassageQuote(ref);
+        if (!quote) return;
+
+        setContent((prev) => {
+          const trimmed = prev.trimEnd();
+          if (!trimmed) {
+            return quote;
+          }
+          return `${trimmed}\n\n${quote}`;
+        });
+      } catch (err) {
+        console.error('Failed to insert verse into note:', err);
+      }
+    },
+    [fetchPassageQuote]
+  );
+
+  // Insert scripture quote from the preview modal into the note
+  const handleInsertPassageFromModal = useCallback(
+    (passage: PassageDetails) => {
+      const quote = formatPassageQuote(passage.verses, passage.ref);
+      if (quote) {
+        setContent((prev) => {
+          const trimmed = prev.trimEnd();
+          if (!trimmed) {
+            return quote;
+          }
+          return `${trimmed}\n\n${quote}`;
+        });
+      }
+      closeVersePreview();
+    },
+    [closeVersePreview]
+  );
+
   if (isLoading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
@@ -233,6 +274,7 @@ export default function NoteDetailScreen() {
         onChangeContent={setContent}
         detectedVerses={detectedReferences}
         onPressVerse={openVersePreview}
+        onInsertVerse={handleInsertVerse}
       />
 
       {/* Offline Verse Preview Modal */}
@@ -242,6 +284,7 @@ export default function NoteDetailScreen() {
         isLoading={isLoadingPassage}
         onClose={closeVersePreview}
         onNavigateToReader={handleNavigateToReader}
+        onInsertVerse={handleInsertPassageFromModal}
       />
     </View>
   );

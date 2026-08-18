@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -124,6 +124,14 @@ export default function BookChapterPickerScreen() {
             style={{ flex: 1 }}
             contentContainerStyle={styles.booksScrollContent}
             showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
+            decelerationRate="normal"
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+            initialNumToRender={39}
+            maxToRenderPerBatch={39}
+            windowSize={15}
+            removeClippedSubviews={false}
             renderItem={({ item: book }) => {
               const isSelected = book.id === selectedBook.id;
               return (
@@ -178,6 +186,14 @@ export default function BookChapterPickerScreen() {
             columnWrapperStyle={styles.chapterRowWrapper}
             contentContainerStyle={styles.chapterGridContent}
             showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
+            decelerationRate="normal"
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+            initialNumToRender={50}
+            maxToRenderPerBatch={50}
+            windowSize={15}
+            removeClippedSubviews={false}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={[

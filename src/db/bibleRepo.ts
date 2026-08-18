@@ -1,5 +1,5 @@
-﻿import { type SQLiteDatabase } from 'expo-sqlite';
-import { Book, Verse, Bookmark, BibleSearchMatch, ParsedPassageRef } from '../types/bible';
+import { type SQLiteDatabase } from 'expo-sqlite';
+import { Book, Verse, Bookmark, BibleSearchMatch, ParsedPassageRef, BibleVersion } from '../types/bible';
 import { BIBLE_BOOKS, getBookById, getBookByAlias } from '../constants/BibleBooks';
 import { parseVerseReferences } from '../utils/verseParser';
 
@@ -33,19 +33,25 @@ export const BibleRepo = {
   /**
    * Retrieves all verses for a given book and chapter from the E-Bible database.
    */
-  async getChapterVerses(db: SQLiteDatabase, bookId: number, chapter: number): Promise<Verse[]> {
+  async getChapterVerses(
+    db: SQLiteDatabase,
+    bookId: number,
+    chapter: number,
+    version: BibleVersion = 'KJV'
+  ): Promise<Verse[]> {
     const book = getBookById(bookId) || BIBLE_BOOKS[0];
     const abbrev = book.abbreviation;
+    const tableName = version === 'CEB' ? 'bible_ceb' : 'bible';
 
     try {
-      // Query full KJV bible table
+      // Query bible translation table (bible for KJV, bible_ceb for Cebuano)
       const rows = await db.getAllAsync<{
         book: string;
         chapter: number;
         verse: number;
         content: string;
       }>(
-        'SELECT book, chapter, verse, content FROM bible WHERE book = ? AND chapter = ? ORDER BY verse ASC',
+        `SELECT book, chapter, verse, content FROM ${tableName} WHERE book = ? AND chapter = ? ORDER BY verse ASC`,
         [abbrev, chapter]
       );
 
@@ -61,23 +67,36 @@ export const BibleRepo = {
         }));
       }
     } catch (e) {
-      console.warn('bible table query notice:', e);
+      console.warn(`${tableName} query notice:`, e);
     }
 
-    // Fallback to verses table if present
+    // Fallback to default bible table if needed
     try {
-      const fallbackRows = await db.getAllAsync<Verse>(
-        `SELECT v.id, v.book_id, v.chapter, v.verse, v.text, b.name as book_name, b.abbreviation as book_abbreviation
-         FROM verses v
-         JOIN books b ON b.id = v.book_id
-         WHERE v.book_id = ? AND v.chapter = ?
-         ORDER BY v.verse ASC`,
-        [bookId, chapter]
+      const fallbackRows = await db.getAllAsync<{
+        book: string;
+        chapter: number;
+        verse: number;
+        content: string;
+      }>(
+        'SELECT book, chapter, verse, content FROM bible WHERE book = ? AND chapter = ? ORDER BY verse ASC',
+        [abbrev, chapter]
       );
-      return fallbackRows;
+      if (fallbackRows && fallbackRows.length > 0) {
+        return fallbackRows.map((r) => ({
+          id: (bookId * 100000) + (chapter * 1000) + r.verse,
+          book_id: bookId,
+          chapter: r.chapter,
+          verse: r.verse,
+          text: cleanVerseText(r.content),
+          book_name: book.name,
+          book_abbreviation: book.abbreviation,
+        }));
+      }
     } catch {
       return [];
     }
+
+    return [];
   },
 
   /**
@@ -88,15 +107,17 @@ export const BibleRepo = {
     bookId: number,
     chapter: number,
     startVerse?: number,
-    endVerse?: number
+    endVerse?: number,
+    version: BibleVersion = 'KJV'
   ): Promise<Verse[]> {
     if (!startVerse) {
-      return this.getChapterVerses(db, bookId, chapter);
+      return this.getChapterVerses(db, bookId, chapter, version);
     }
 
     const book = getBookById(bookId) || BIBLE_BOOKS[0];
     const abbrev = book.abbreviation;
     const end = endVerse ?? startVerse;
+    const tableName = version === 'CEB' ? 'bible_ceb' : 'bible';
 
     try {
       const rows = await db.getAllAsync<{
@@ -105,7 +126,7 @@ export const BibleRepo = {
         verse: number;
         content: string;
       }>(
-        'SELECT book, chapter, verse, content FROM bible WHERE book = ? AND chapter = ? AND verse >= ? AND verse <= ? ORDER BY verse ASC',
+        `SELECT book, chapter, verse, content FROM ${tableName} WHERE book = ? AND chapter = ? AND verse >= ? AND verse <= ? ORDER BY verse ASC`,
         [abbrev, chapter, startVerse, end]
       );
 
@@ -121,43 +142,42 @@ export const BibleRepo = {
         }));
       }
     } catch (e) {
-      console.warn('bible range query notice:', e);
+      console.warn(`${tableName} range query notice:`, e);
     }
 
-    try {
-      return await db.getAllAsync<Verse>(
-        `SELECT v.id, v.book_id, v.chapter, v.verse, v.text, b.name as book_name, b.abbreviation as book_abbreviation
-         FROM verses v
-         JOIN books b ON b.id = v.book_id
-         WHERE v.book_id = ? AND v.chapter = ? AND v.verse >= ? AND v.verse <= ?
-         ORDER BY v.verse ASC`,
-        [bookId, chapter, startVerse, end]
-      );
-    } catch {
-      return [];
-    }
+    return [];
   },
 
   /**
    * Resolves a parsed passage reference into complete verses.
    */
-  async getVersesForParsedRef(db: SQLiteDatabase, ref: ParsedPassageRef): Promise<Verse[]> {
-    return await this.getVerseRange(db, ref.bookId, ref.chapter, ref.startVerse, ref.endVerse);
+  async getVersesForParsedRef(
+    db: SQLiteDatabase,
+    ref: ParsedPassageRef,
+    version: BibleVersion = 'KJV'
+  ): Promise<Verse[]> {
+    return await this.getVerseRange(db, ref.bookId, ref.chapter, ref.startVerse, ref.endVerse, version);
   },
 
   /**
    * Universal Scripture Search:
-   * 1. Detects Bible Book name searches (e.g. "Genesis", "Matthew", "Romans", "Psalms")
-   * 2. Detects exact citations (e.g. "John 3:16", "Genesis 1", "Psalm 23")
+   * 1. Detects Bible Book name searches (e.g. "Genesis", "Matthew", "Juan", "Salmo")
+   * 2. Detects exact citations (e.g. "John 3:16", "Juan 3:16", "Salmo 23")
    * 3. Searches full text across the 31,102 verses with instant LIKE & FTS
    */
-  async searchBible(db: SQLiteDatabase, query: string, limit = 50): Promise<BibleSearchMatch[]> {
+  async searchBible(
+    db: SQLiteDatabase,
+    query: string,
+    limit = 50,
+    version: BibleVersion = 'KJV'
+  ): Promise<BibleSearchMatch[]> {
     const cleanQuery = query.trim();
     if (!cleanQuery) return [];
 
     const matches: BibleSearchMatch[] = [];
     const seenIds = new Set<number>();
     const lowerQuery = cleanQuery.toLowerCase();
+    const tableName = version === 'CEB' ? 'bible_ceb' : 'bible';
 
     // 1. Search Bible Book Names & Aliases
     for (const book of BIBLE_BOOKS) {
@@ -184,11 +204,11 @@ export const BibleRepo = {
       }
     }
 
-    // 2. Check if user typed a specific scripture reference (e.g. "John 3:16" or "Genesis 1")
+    // 2. Check if user typed a specific scripture reference (e.g. "John 3:16", "Juan 3:16", or "Genesis 1")
     try {
       const parsedRefs = parseVerseReferences(cleanQuery);
       for (const ref of parsedRefs) {
-        const refVerses = await this.getVersesForParsedRef(db, ref);
+        const refVerses = await this.getVersesForParsedRef(db, ref, version);
         for (const v of refVerses) {
           if (!seenIds.has(v.id)) {
             seenIds.add(v.id);
@@ -208,7 +228,7 @@ export const BibleRepo = {
       console.warn('Citation search notice:', parseErr);
     }
 
-    // 3. Perform text search across all 31,102 verses
+    // 3. Perform text search across all 31,102 verses in the active version
     try {
       const rows = await db.getAllAsync<{
         book: string;
@@ -216,7 +236,7 @@ export const BibleRepo = {
         verse: number;
         content: string;
       }>(
-        'SELECT book, chapter, verse, content FROM bible WHERE content LIKE ? LIMIT ?',
+        `SELECT book, chapter, verse, content FROM ${tableName} WHERE content LIKE ? LIMIT ?`,
         [`%${cleanQuery}%`, limit]
       );
 
@@ -248,7 +268,8 @@ export const BibleRepo = {
   /**
    * Retrieves all saved bookmarks.
    */
-  async getBookmarks(db: SQLiteDatabase): Promise<Bookmark[]> {
+  async getBookmarks(db: SQLiteDatabase, version: BibleVersion = 'KJV'): Promise<Bookmark[]> {
+    const tableName = version === 'CEB' ? 'bible_ceb' : 'bible';
     try {
       const bookmarks = await db.getAllAsync<Bookmark>(
         'SELECT id, book_id, chapter, verse, label, created_at FROM bookmarks ORDER BY created_at DESC'
@@ -259,7 +280,7 @@ export const BibleRepo = {
         if (book) {
           bm.book_name = book.name;
           const verseRow = await db.getFirstAsync<{ content: string }>(
-            'SELECT content FROM bible WHERE book = ? AND chapter = ? AND verse = ?',
+            `SELECT content FROM ${tableName} WHERE book = ? AND chapter = ? AND verse = ?`,
             [book.abbreviation, bm.chapter, bm.verse]
           );
           if (verseRow) {

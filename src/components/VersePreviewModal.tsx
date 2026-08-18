@@ -19,6 +19,7 @@ interface VersePreviewModalProps {
   isLoading?: boolean;
   onClose: () => void;
   onNavigateToReader?: (bookId: number, chapter: number) => void;
+  onInsertVerse?: (passage: PassageDetails) => void;
 }
 
 export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
@@ -27,6 +28,7 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
   isLoading = false,
   onClose,
   onNavigateToReader,
+  onInsertVerse,
 }) => {
   const { colors } = useTheme();
 
@@ -51,11 +53,6 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
                 },
               ]}
             >
-              {/* Handle bar for bottom sheet look */}
-              <View style={styles.handleBarContainer}>
-                <View style={[styles.handleBar, { backgroundColor: colors.separator }]} />
-              </View>
-
               {/* Header */}
               <View style={[styles.header, { borderBottomColor: colors.border }]}>
                 <View style={styles.headerTitleRow}>
@@ -79,6 +76,7 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
                 style={styles.scrollArea}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
               >
                 {isLoading ? (
                   <View style={styles.loadingContainer}>
@@ -105,18 +103,52 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
               </ScrollView>
 
               {/* Footer Actions */}
-              {passage && onNavigateToReader && (
+              {passage && passage.verses.length > 0 && (
                 <View style={[styles.footer, { borderTopColor: colors.border }]}>
-                  <TouchableOpacity
-                    style={[styles.readerButton, { backgroundColor: colors.tint }]}
-                    onPress={() => {
-                      onClose();
-                      onNavigateToReader(passage.ref.bookId, passage.ref.chapter);
-                    }}
-                  >
-                    <Ionicons name="open-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.readerButtonText}>Open in Bible Reader</Text>
-                  </TouchableOpacity>
+                  {onInsertVerse && (
+                    <TouchableOpacity
+                      style={[styles.insertButton, { backgroundColor: colors.tint }]}
+                      onPress={() => {
+                        onInsertVerse(passage);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="add-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <Text style={styles.insertButtonText}>Insert into Note</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {onNavigateToReader && (
+                    <TouchableOpacity
+                      style={[
+                        styles.readerButton,
+                        {
+                          backgroundColor: onInsertVerse ? colors.secondaryBackground : colors.tint,
+                          marginTop: onInsertVerse ? 8 : 0,
+                        },
+                      ]}
+                      onPress={() => {
+                        onClose();
+                        onNavigateToReader(passage.ref.bookId, passage.ref.chapter);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name="open-outline"
+                        size={16}
+                        color={onInsertVerse ? colors.text : '#FFFFFF'}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text
+                        style={[
+                          styles.readerButtonText,
+                          { color: onInsertVerse ? colors.text : '#FFFFFF' },
+                        ]}
+                      >
+                        Open in Bible Reader
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>
@@ -130,36 +162,31 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 36,
   },
   modalContainer: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '75%',
-    minHeight: 280,
+    width: '100%',
+    maxHeight: '80%',
+    minHeight: 260,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 12,
-  },
-  handleBarContainer: {
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  handleBar: {
-    width: 36,
-    height: 5,
-    borderRadius: 2.5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingBottom: 14,
+    paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerTitleRow: {
@@ -180,10 +207,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scrollArea: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
   },
   scrollContent: {
-    padding: 20,
+    paddingHorizontal: 22,
+    paddingVertical: 18,
   },
   verseRow: {
     flexDirection: 'row',
@@ -225,6 +254,18 @@ const styles = StyleSheet.create({
     padding: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  insertButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  insertButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   readerButton: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -233,8 +274,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   readerButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
 });

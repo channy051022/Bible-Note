@@ -21,6 +21,7 @@ interface RichEditorProps {
   onChangeContent: (content: string) => void;
   detectedVerses: ParsedPassageRef[];
   onPressVerse: (ref: ParsedPassageRef) => void;
+  onInsertVerse?: (ref: ParsedPassageRef) => void;
 }
 
 export const RichEditor: React.FC<RichEditorProps> = ({
@@ -30,6 +31,7 @@ export const RichEditor: React.FC<RichEditorProps> = ({
   onChangeContent,
   detectedVerses,
   onPressVerse,
+  onInsertVerse,
 }) => {
   const { colors } = useTheme();
   const contentInputRef = useRef<TextInput>(null);
@@ -67,24 +69,44 @@ export const RichEditor: React.FC<RichEditorProps> = ({
         {detectedVerses.length > 0 && (
           <View style={[styles.verseBar, { backgroundColor: colors.secondaryBackground, borderColor: colors.border }]}>
             <View style={styles.verseBarHeader}>
-              <Ionicons name="sparkles" size={14} color={colors.tint} style={{ marginRight: 5 }} />
-              <Text style={[styles.verseBarTitle, { color: colors.tint }]}>
-                Detected Verses ({detectedVerses.length})
+              <View style={styles.headerLeft}>
+                <Ionicons name="sparkles" size={14} color={colors.tint} style={{ marginRight: 5 }} />
+                <Text style={[styles.verseBarTitle, { color: colors.tint }]}>
+                  Detected Scripture ({detectedVerses.length})
+                </Text>
+              </View>
+              <Text style={[styles.verseBarTip, { color: colors.textSecondary }]}>
+                Tap to insert
               </Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
               {detectedVerses.map((ref, idx) => (
-                <TouchableOpacity
+                <View
                   key={`${ref.bookId}-${ref.chapter}-${ref.startVerse}-${idx}`}
-                  style={[styles.verseChip, { backgroundColor: colors.versePill, borderColor: colors.versePillBorder }]}
-                  onPress={() => onPressVerse(ref)}
-                  activeOpacity={0.7}
+                  style={[styles.verseChipContainer, { backgroundColor: colors.versePill, borderColor: colors.versePillBorder }]}
                 >
-                  <Ionicons name="book" size={12} color={colors.versePillText} style={{ marginRight: 4 }} />
-                  <Text style={[styles.verseChipText, { color: colors.versePillText }]}>
-                    {formatPassageRef(ref)}
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.verseChipMain}
+                    onPress={() => (onInsertVerse ? onInsertVerse(ref) : onPressVerse(ref))}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add-circle" size={14} color={colors.versePillText} style={{ marginRight: 5 }} />
+                    <Text style={[styles.verseChipText, { color: colors.versePillText }]}>
+                      {formatPassageRef(ref)}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={[styles.chipDivider, { backgroundColor: colors.versePillBorder }]} />
+
+                  <TouchableOpacity
+                    style={styles.verseChipPreview}
+                    onPress={() => onPressVerse(ref)}
+                    hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="eye-outline" size={14} color={colors.versePillText} />
+                  </TouchableOpacity>
+                </View>
               ))}
             </ScrollView>
           </View>
@@ -181,7 +203,12 @@ const styles = StyleSheet.create({
   verseBarHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   verseBarTitle: {
     fontSize: 12,
@@ -189,21 +216,40 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  verseBarTip: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
   chipsScroll: {
     flexDirection: 'row',
   },
-  verseChip: {
+  verseChipContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
     borderRadius: 12,
     borderWidth: 1,
     marginRight: 8,
+    overflow: 'hidden',
+  },
+  verseChipMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
   },
   verseChipText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  chipDivider: {
+    width: 1,
+    height: 16,
+  },
+  verseChipPreview: {
+    paddingHorizontal: 7,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   contentInput: {
     fontSize: 17,

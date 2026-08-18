@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
-import { ParsedPassageRef, PassageDetails, Verse } from '../types/bible';
+import { ParsedPassageRef, PassageDetails, Verse, BibleVersion } from '../types/bible';
 import { parseVerseReferences, formatPassageRef, segmentTextWithVerses, TextSegment } from '../utils/verseParser';
 import { BibleRepo } from '../db/bibleRepo';
+import { getItem, StorageKeys } from '../utils/storage';
 
 export interface UseVerseDetectorResult {
   detectedReferences: ParsedPassageRef[];
@@ -11,22 +12,43 @@ export interface UseVerseDetectorResult {
   isLoadingPassage: boolean;
   openVersePreview: (ref: ParsedPassageRef) => Promise<void>;
   closeVersePreview: () => void;
+  fetchPassageQuote: (ref: ParsedPassageRef) => Promise<{ quote: string; title: string }>;
+}
+
+/**
+ * Formats scripture verses into a clean, markdown blockquote with citation.
+ */
+export function formatPassageQuote(verses: Verse[], ref: ParsedPassageRef, version: BibleVersion = 'KJV'): string {
+  if (!verses || verses.length === 0) return '';
+
+  const citation = formatPassageRef(ref);
+  let textBody = '';
+
+  if (verses.length === 1) {
+    textBody = `"${verses[0].text}"`;
+  } else {
+    textBody = verses.map((v) => `${v.verse} ${v.text}`).join('\n');
+    textBody = `"${textBody}"`;
+  }
+
+  const versionLabel = version === 'CEB' ? 'Cebuano' : 'KJV';
+  return `> ${textBody}\n— **${citation}** (${versionLabel})\n\n`;
 }
 
 /**
  * Hook that continuously detects Bible verse references inside note content in real time
- * and provides offline SQLite passage fetching for interactive modals/popovers.
+ * and provides offline SQLite passage fetching for interactive modals and 1-click note insertion.
  *
  * @param content The text/note body to scan.
- * @param debounceMs Delay in ms to debounce heavy operations (default: 250ms).
+ * @param debounceMs Delay in ms to debounce heavy operations (default: 120ms).
  */
-export function useVerseDetector(content: string, debounceMs: number = 250): UseVerseDetectorResult {
+export function useVerseDetector(content: string, debounceMs: number = 120): UseVerseDetectorResult {
   const db = useSQLiteContext();
   const [debouncedContent, setDebouncedContent] = useState<string>(content);
   const [selectedPassage, setSelectedPassage] = useState<PassageDetails | null>(null);
   const [isLoadingPassage, setIsLoadingPassage] = useState<boolean>(false);
 
-  // Debounce the content parsing for buttery smooth typing performance
+  // Debounce the content parsing for responsive, lag-free typing performance
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedContent(content);
@@ -52,7 +74,8 @@ export function useVerseDetector(content: string, debounceMs: number = 250): Use
     async (ref: ParsedPassageRef) => {
       try {
         setIsLoadingPassage(true);
-        const verses: Verse[] = await BibleRepo.getVersesForParsedRef(db, ref);
+        const version = getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
+        const verses: Verse[] = await BibleRepo.getVersesForParsedRef(db, ref, version);
         const formattedTitle = formatPassageRef(ref);
 
         setSelectedPassage({
@@ -74,6 +97,18 @@ export function useVerseDetector(content: string, debounceMs: number = 250): Use
     setSelectedPassage(null);
   }, []);
 
+  // Fetches verses and formats a markdown quotation ready to insert into note
+  const fetchPassageQuote = useCallback(
+    async (ref: ParsedPassageRef): Promise<{ quote: string; title: string }> => {
+      const version = getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
+      const verses: Verse[] = await BibleRepo.getVersesForParsedRef(db, ref, version);
+      const title = formatPassageRef(ref);
+      const quote = formatPassageQuote(verses, ref, version);
+      return { quote, title };
+    },
+    [db]
+  );
+
   return {
     detectedReferences,
     textSegments,
@@ -81,5 +116,6 @@ export function useVerseDetector(content: string, debounceMs: number = 250): Use
     isLoadingPassage,
     openVersePreview,
     closeVersePreview,
+    fetchPassageQuote,
   };
 }

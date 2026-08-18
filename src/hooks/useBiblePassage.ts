@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Book, Verse } from '../types/bible';
+import { Book, Verse, BibleVersion } from '../types/bible';
 import { BibleRepo } from '../db/bibleRepo';
 import { BIBLE_BOOKS, getBookById } from '../constants/BibleBooks';
 import { getItem, setItem, StorageKeys } from '../utils/storage';
@@ -13,24 +13,32 @@ export function useBiblePassage(initialBookId: number = 1, initialChapter: numbe
   const [chapter, setChapter] = useState<number>(() => {
     return getItem<number>(StorageKeys.LAST_READ_CHAPTER, initialChapter);
   });
+  const [version, setVersionState] = useState<BibleVersion>(() => {
+    return getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
+  });
 
   const [currentBook, setCurrentBook] = useState<Book | null>(null);
   const [verses, setVerses] = useState<Verse[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [bookmarks, setBookmarks] = useState<Set<number>>(new Set());
 
-  // Load verses for current book & chapter
+  const setVersion = useCallback((newVersion: BibleVersion) => {
+    setVersionState(newVersion);
+    setItem(StorageKeys.BIBLE_VERSION, newVersion);
+  }, []);
+
+  // Load verses for current book & chapter in active version
   const loadPassage = useCallback(async () => {
     try {
       setIsLoading(true);
       const book = getBookById(bookId) || (await BibleRepo.getBookById(db, bookId));
       setCurrentBook(book || null);
 
-      const chapterVerses = await BibleRepo.getChapterVerses(db, bookId, chapter);
+      const chapterVerses = await BibleRepo.getChapterVerses(db, bookId, chapter, version);
       setVerses(chapterVerses);
 
       // Load bookmark statuses for this chapter
-      const allBookmarks = await BibleRepo.getBookmarks(db);
+      const allBookmarks = await BibleRepo.getBookmarks(db, version);
       const chapterBookmarks = new Set<number>();
       allBookmarks.forEach((bm) => {
         if (bm.book_id === bookId && bm.chapter === chapter) {
@@ -47,7 +55,7 @@ export function useBiblePassage(initialBookId: number = 1, initialChapter: numbe
     } finally {
       setIsLoading(false);
     }
-  }, [db, bookId, chapter]);
+  }, [db, bookId, chapter, version]);
 
   useEffect(() => {
     loadPassage();
@@ -102,6 +110,7 @@ export function useBiblePassage(initialBookId: number = 1, initialChapter: numbe
   return {
     bookId,
     chapter,
+    version,
     currentBook,
     verses,
     isLoading,
@@ -109,6 +118,7 @@ export function useBiblePassage(initialBookId: number = 1, initialChapter: numbe
     goToNextChapter,
     goToPreviousChapter,
     setPassage,
+    setVersion,
     toggleBookmark,
     reload: loadPassage,
   };

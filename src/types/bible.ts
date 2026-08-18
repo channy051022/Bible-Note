@@ -1,4 +1,13 @@
-﻿export type Testament = 'OT' | 'NT';
+export type Testament = 'OT' | 'NT';
+export type BibleVersion = 'KJV' | 'CEB';
+
+export interface BibleVersionMeta {
+  id: BibleVersion;
+  name: string;
+  shortName: string;
+  language: string;
+  description: string;
+}
 
 export interface Book {
   id: number;
