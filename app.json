@@ -4,21 +4,39 @@
     "slug": "bible-notes-app",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.biblenotes.app",
+      "icon": "./assets/icon.png",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.biblenotes.app"]
+        "com.apple.security.application-groups": [
+          "group.com.biblenotes.app",
+          "group.com.biblenotes.app"
+        ]
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.biblenotes.app"
+      "package": "com.biblenotes.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#121316"
+      }
     },
     "plugins": [
       "expo-router",
       "./plugins/withVerseWidget"
     ],
-    "scheme": "biblenotes"
+    "scheme": "biblenotes",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d114ae6d-f5d2-4524-972a-19c47d0933b0"
+      }
+    }
   }
 }
