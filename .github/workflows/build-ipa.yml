@@ -16,41 +16,45 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+
+      - name: Set Xcode Version
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.0.app || sudo xcode-select -s /Applications/Xcode_15.4.app || true
+          xcodebuild -version
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm install --legacy-peer-deps
 
       - name: Prebuild iOS project
-        run: npx expo prebuild --platform ios --clean
+        run: npx expo prebuild --platform ios --clean --no-install
 
       - name: Install CocoaPods
         run: |
           cd ios
           pod install
 
-      - name: Build unsigned iOS Release .app
+      - name: Build unsigned iOS Release Archive
         run: |
-          WORKSPACE=$(find ios -name "*.xcworkspace" | head -n 1)
-          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list -json | python3 -c 'import sys, json; print(json.load(sys.stdin)["workspace"]["schemes"][0])')
-          echo "Found workspace: $WORKSPACE with scheme: $SCHEME"
-          
-          xcodebuild -workspace "$WORKSPACE" \
-            -scheme "$SCHEME" \
+          xcodebuild -workspace ios/SHEPHERD.xcworkspace \
+            -scheme SHEPHERD \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build \
+            -archivePath build/SHEPHERD.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             -destination 'generic/platform=iOS' \
-            clean build
+            clean archive
 
       - name: Package .app into .ipa for Sideloadly
         run: |
           mkdir -p Payload
-          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1 | head -n 1)
+          APP_PATH="build/SHEPHERD.xcarchive/Products/Applications/SHEPHERD.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(find build -name "*.app" | head -n 1)
+          fi
           echo "Packaging: $APP_PATH"
           cp -R "$APP_PATH" Payload/
           zip -r shepherd.ipa Payload
