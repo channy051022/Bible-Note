@@ -1,16 +1,23 @@
-﻿{
+{
   "expo": {
-    "name": "Bible Notes",
+    "name": "SHEPHERD",
     "slug": "bible-notes-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.biblenotes.app"
+      "bundleIdentifier": "com.biblenotes.app",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.biblenotes.app"]
+      }
+    },
+    "android": {
+      "package": "com.biblenotes.app"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "./plugins/withVerseWidget"
     ],
     "scheme": "biblenotes"
   }

@@ -24,7 +24,7 @@ export const TagPill: React.FC<TagPillProps> = ({
 
   const backgroundColor = isSelected
     ? colors.tint
-    : colors.secondaryBackground;
+    : colors.glassInput;
 
   const textColor = isSelected
     ? '#FFFFFF'

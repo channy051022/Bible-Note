@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { ParsedPassageRef } from '../types/bible';
@@ -34,11 +35,12 @@ export const RichEditor: React.FC<RichEditorProps> = ({
   onInsertVerse,
 }) => {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const contentInputRef = useRef<TextInput>(null);
 
   // Helper to insert markdown formatting at current position or append
   const applyFormat = (prefix: string, suffix: string = '') => {
-    const newContent = content ? `${content}\n${prefix} ` : `${prefix} `;
+    const newContent = content ? `${content}\n${prefix}${suffix}` : `${prefix}${suffix}`;
     onChangeContent(newContent);
     contentInputRef.current?.focus();
   };
@@ -47,11 +49,11 @@ export const RichEditor: React.FC<RichEditorProps> = ({
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
     >
       <ScrollView
         style={styles.scrollArea}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 60 }]}
         keyboardShouldPersistTaps="handled"
       >
         {/* Title Input */}
@@ -67,7 +69,7 @@ export const RichEditor: React.FC<RichEditorProps> = ({
 
         {/* Detected Verse Chips Bar */}
         {detectedVerses.length > 0 && (
-          <View style={[styles.verseBar, { backgroundColor: colors.secondaryBackground, borderColor: colors.border }]}>
+          <View style={[styles.verseBar, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
             <View style={styles.verseBarHeader}>
               <View style={styles.headerLeft}>
                 <Ionicons name="sparkles" size={14} color={colors.tint} style={{ marginRight: 5 }} />
@@ -76,14 +78,14 @@ export const RichEditor: React.FC<RichEditorProps> = ({
                 </Text>
               </View>
               <Text style={[styles.verseBarTip, { color: colors.textSecondary }]}>
-                Tap to insert
+                Tap + to insert
               </Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
               {detectedVerses.map((ref, idx) => (
                 <View
                   key={`${ref.bookId}-${ref.chapter}-${ref.startVerse}-${idx}`}
-                  style={[styles.verseChipContainer, { backgroundColor: colors.versePill, borderColor: colors.versePillBorder }]}
+                  style={[styles.verseChipContainer, { backgroundColor: colors.glassPill, borderColor: colors.versePillBorder }]}
                 >
                   <TouchableOpacity
                     style={styles.verseChipMain}
@@ -127,43 +129,53 @@ export const RichEditor: React.FC<RichEditorProps> = ({
         />
       </ScrollView>
 
-      {/* Formatting Accessory Toolbar */}
-      <View style={[styles.toolbar, { backgroundColor: colors.secondaryBackground, borderTopColor: colors.border }]}>
+      {/* Formatting Accessory Toolbar - Elevated with Safe Area Insets */}
+      <View
+        style={[
+          styles.toolbar,
+          {
+            backgroundColor: colors.glassBackground,
+            borderTopColor: colors.border,
+            paddingBottom: Math.max(insets.bottom, 16) + 10,
+            paddingTop: 10,
+          },
+        ]}
+      >
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarContent}>
           <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => applyFormat('**Bold Text**')}
+            style={[styles.toolBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+            onPress={() => applyFormat('**', '**')}
             hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
           >
             <Ionicons name="text" size={18} color={colors.text} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => applyFormat('### Heading')}
+            style={[styles.toolBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+            onPress={() => applyFormat('### ')}
             hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
           >
             <Ionicons name="funnel-outline" size={18} color={colors.text} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => applyFormat('> ')}
+            style={[styles.toolBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+            onPress={() => applyFormat('"', '"')}
             hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
           >
             <Ionicons name="chatbox-ellipses-outline" size={18} color={colors.text} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => applyFormat('- ')}
+            style={[styles.toolBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+            onPress={() => applyFormat('• ')}
             hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
           >
             <Ionicons name="list-outline" size={18} color={colors.text} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.toolBtn}
+            style={[styles.toolBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
             onPress={() => applyFormat('John 3:16')}
             hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
           >
@@ -195,10 +207,15 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   verseBar: {
-    padding: 10,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 16,
     marginBottom: 16,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   verseBarHeader: {
     flexDirection: 'row',
@@ -268,8 +285,9 @@ const styles = StyleSheet.create({
   },
   toolBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 6,
-    borderRadius: 8,
+    paddingVertical: 7,
+    marginRight: 8,
+    borderRadius: 10,
+    borderWidth: 1,
   },
 });

@@ -7,15 +7,15 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Ionicons } from '@expo/vector-icons';
-import { BibleRepo } from '../../src/db/bibleRepo';
-import { useTheme } from '../../src/hooks/useTheme';
-import { Bookmark, BibleVersion } from '../../src/types/bible';
-import { getItem, StorageKeys } from '../../src/utils/storage';
+import { BibleRepo } from '../src/db/bibleRepo';
+import { useTheme } from '../src/hooks/useTheme';
+import { Bookmark, BibleVersion } from '../src/types/bible';
+import { getItem, StorageKeys } from '../src/utils/storage';
 
-export default function SavedScreen() {
+export default function SavedModalScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
   const { colors } = useTheme();
@@ -43,8 +43,8 @@ export default function SavedScreen() {
   );
 
   const handleOpenBookmark = (bm: Bookmark) => {
-    router.push({
-      pathname: '/(tabs)',
+    router.replace({
+      pathname: '/(tabs)/bible',
       params: { bookId: bm.book_id.toString(), chapter: bm.chapter.toString() },
     });
   };
@@ -65,12 +65,17 @@ export default function SavedScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Bookmarks Section Header */}
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Bookmarks ({bookmarks.length})
-        </Text>
-      </View>
+      <Stack.Screen
+        options={{
+          title: 'Saved Bookmarks',
+          headerShown: true,
+          headerRight: () => (
+            <TouchableOpacity onPress={() => router.back()} style={styles.doneBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={[styles.doneBtnText, { color: colors.tint }]}>Done</Text>
+            </TouchableOpacity>
+          ),
+        }}
+      />
 
       {/* Bookmarks List */}
       <FlatList
@@ -90,13 +95,15 @@ export default function SavedScreen() {
         }
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={[styles.bookmarkCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.bookmarkCard, { backgroundColor: colors.glassCard, borderColor: colors.border }]}
             onPress={() => handleOpenBookmark(item)}
             activeOpacity={0.7}
           >
             <View style={styles.cardHeader}>
               <View style={styles.badgeRow}>
-                <Ionicons name="bookmark" size={16} color={colors.gold} style={{ marginRight: 6 }} />
+                <View style={[styles.bookmarkIconBadge, { backgroundColor: colors.glassHighlight }]}>
+                  <Ionicons name="bookmark" size={14} color={colors.gold} />
+                </View>
                 <Text style={[styles.citation, { color: colors.text }]}>
                   {item.book_name} {item.chapter}:{item.verse}
                 </Text>
@@ -125,34 +132,47 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  sectionHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 6,
+  doneBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+  doneBtnText: {
+    fontSize: 17,
+    fontWeight: '600',
   },
   listContent: {
     padding: 16,
-    paddingTop: 8,
+    paddingTop: 14,
+    paddingBottom: 40,
   },
   bookmarkCard: {
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  bookmarkIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
   },
   citation: {
     fontSize: 16,
@@ -160,7 +180,7 @@ const styles = StyleSheet.create({
   },
   verseSnippet: {
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 21,
     fontStyle: 'italic',
   },
   emptyState: {
@@ -168,7 +188,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
     marginTop: 12,
   },
@@ -179,4 +199,3 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
-

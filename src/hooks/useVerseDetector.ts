@@ -27,12 +27,11 @@ export function formatPassageQuote(verses: Verse[], ref: ParsedPassageRef, versi
   if (verses.length === 1) {
     textBody = `"${verses[0].text}"`;
   } else {
-    textBody = verses.map((v) => `${v.verse} ${v.text}`).join('\n');
-    textBody = `"${textBody}"`;
+    textBody = `"${verses.map((v) => `${v.verse} ${v.text}`).join(' ')}"`;
   }
 
   const versionLabel = version === 'CEB' ? 'Cebuano' : 'KJV';
-  return `> ${textBody}\n— **${citation}** (${versionLabel})\n\n`;
+  return `✨ ${textBody}\n— ${citation} (${versionLabel})\n\n`;
 }
 
 /**

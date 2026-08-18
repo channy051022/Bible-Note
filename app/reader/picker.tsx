@@ -45,7 +45,7 @@ export default function BookChapterPickerScreen() {
 
     router.dismissAll();
     router.navigate({
-      pathname: '/(tabs)',
+      pathname: '/(tabs)/bible',
       params: {
         bookId: selectedBook.id.toString(),
         chapter: chapterNum.toString(),
@@ -71,12 +71,12 @@ export default function BookChapterPickerScreen() {
       />
 
       {/* Header Testament Segmented Bar */}
-      <View style={[styles.testamentHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <View style={[styles.segmentedControl, { backgroundColor: colors.secondaryBackground }]}>
+      <View style={[styles.testamentHeader, { backgroundColor: colors.glassBackground, borderBottomColor: colors.border }]}>
+        <View style={[styles.segmentedControl, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
           <TouchableOpacity
             style={[
               styles.segmentBtn,
-              selectedTestament === 'OT' && [styles.segmentBtnActive, { backgroundColor: colors.card }],
+              selectedTestament === 'OT' && [styles.segmentBtnActive, { backgroundColor: colors.glassCardElevated, borderColor: colors.glassBorder }],
             ]}
             onPress={() => handleSelectTestament('OT')}
             activeOpacity={0.7}
@@ -95,7 +95,7 @@ export default function BookChapterPickerScreen() {
           <TouchableOpacity
             style={[
               styles.segmentBtn,
-              selectedTestament === 'NT' && [styles.segmentBtnActive, { backgroundColor: colors.card }],
+              selectedTestament === 'NT' && [styles.segmentBtnActive, { backgroundColor: colors.glassCardElevated, borderColor: colors.glassBorder }],
             ]}
             onPress={() => handleSelectTestament('NT')}
             activeOpacity={0.7}
@@ -138,7 +138,7 @@ export default function BookChapterPickerScreen() {
                 <TouchableOpacity
                   style={[
                     styles.bookItem,
-                    isSelected ? [styles.bookItemSelected, { backgroundColor: colors.card, borderLeftColor: colors.tint }] : null,
+                    isSelected ? [styles.bookItemSelected, { backgroundColor: colors.glassCardElevated, borderLeftColor: colors.tint }] : null,
                   ]}
                   onPress={() => setSelectedBook(book)}
                   activeOpacity={0.7}
@@ -199,7 +199,7 @@ export default function BookChapterPickerScreen() {
                 style={[
                   styles.chapterCell,
                   {
-                    backgroundColor: colors.card,
+                    backgroundColor: colors.glassCard,
                     borderColor: colors.border,
                   },
                 ]}
@@ -236,21 +236,23 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     flexDirection: 'row',
-    borderRadius: 9,
+    borderRadius: 14,
+    borderWidth: 1,
     padding: 3,
   },
   segmentBtn: {
     flex: 1,
     paddingVertical: 8,
-    borderRadius: 7,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
   },
   segmentBtnActive: {
+    borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12,
-    shadowRadius: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
     elevation: 2,
   },
   segmentBtnText: {
@@ -320,14 +322,14 @@ const styles = StyleSheet.create({
     width: '22%',
     aspectRatio: 1,
     margin: '1.5%',
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
     elevation: 1,
   },
   chapterCellText: {

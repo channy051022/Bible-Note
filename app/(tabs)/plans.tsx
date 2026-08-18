@@ -5,192 +5,202 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ScrollView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Ionicons } from '@expo/vector-icons';
-import { PlansRepo } from '../../src/db/plansRepo';
 import { useTheme } from '../../src/hooks/useTheme';
-import readingPlansData from '../../src/data/readingPlans.json';
-import { ReadingPlan, ReadingPlanDay } from '../../src/types/plan';
+import { PlansRepo } from '../../src/db/plansRepo';
+import { ReadingPlan } from '../../src/types/plan';
+import { getItem, setItem, StorageKeys } from '../../src/utils/storage';
 
-export default function ReadingPlansScreen() {
+export default function ReadingPlansListScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
   const { colors } = useTheme();
 
-  const plans = readingPlansData as ReadingPlan[];
-  const [selectedPlanId, setSelectedPlanId] = useState<string>(plans[0]?.id || 'gospels-30');
-  const [completedDays, setCompletedDays] = useState<Set<number>>(new Set());
+  const [plans, setPlans] = useState<ReadingPlan[]>([]);
+  const [plansProgress, setPlansProgress] = useState<Record<string, number>>({});
+  const [activePlanId, setActivePlanId] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const activePlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
-
-  const loadProgress = useCallback(async () => {
-    if (!activePlan) return;
+  // Load all user reading plans from SQLite
+  const loadPlans = useCallback(async () => {
     try {
-      const progress = await PlansRepo.getPlanProgress(db, activePlan.id);
-      setCompletedDays(new Set(progress.map((p) => p.day)));
-    } catch (err) {
-      console.error('Failed to load plan progress:', err);
+      setIsLoading(true);
+      const userPlans = await PlansRepo.getUserPlans(db);
+      setPlans(userPlans);
+
+      const activeId = getItem<string>(StorageKeys.ACTIVE_PLAN_ID, '');
+      setActivePlanId(activeId);
+
+      // Load progress for each plan
+      const progressMap: Record<string, number> = {};
+      for (const p of userPlans) {
+        const completed = await PlansRepo.getCompletedDays(db, p.id);
+        progressMap[p.id] = completed.length;
+      }
+      setPlansProgress(progressMap);
+    } catch (e) {
+      console.error('Failed to load user plans:', e);
+    } finally {
+      setIsLoading(false);
     }
-  }, [db, activePlan]);
+  }, [db]);
 
   useFocusEffect(
     useCallback(() => {
-      loadProgress();
-    }, [loadProgress])
+      loadPlans();
+    }, [loadPlans])
   );
 
-  const handleToggleDay = async (dayNumber: number) => {
-    if (!activePlan) return;
-    const isCompleted = await PlansRepo.toggleDayCompletion(db, activePlan.id, dayNumber);
-    setCompletedDays((prev) => {
-      const next = new Set(prev);
-      if (isCompleted) next.add(dayNumber);
-      else next.delete(dayNumber);
-      return next;
+  const handleOpenPlanDetail = (plan: ReadingPlan) => {
+    router.push({
+      pathname: '/plan/[id]',
+      params: { id: plan.id },
     });
   };
 
-  const handleOpenReading = (day: ReadingPlanDay) => {
-    const firstReading = day.readings[0];
-    if (firstReading && firstReading.bookId) {
-      router.push({
-        pathname: '/(tabs)' as any,
-        params: {
-          bookId: firstReading.bookId.toString(),
-          chapter: (firstReading.chapter || 1).toString(),
-        },
-      });
-    }
+  const handleCreateNewPlan = () => {
+    router.push('/plan/new');
   };
-
-  const progressPercent = activePlan
-    ? Math.round((completedDays.size / activePlan.durationDays) * 100)
-    : 0;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Plan Selector Pills */}
-      <View style={[styles.plansHeader, { borderBottomColor: colors.border }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.plansScroll}>
-          {plans.map((p) => {
-            const isSelected = p.id === selectedPlanId;
-            return (
-              <TouchableOpacity
-                key={p.id}
-                onPress={() => setSelectedPlanId(p.id)}
-                style={[
-                  styles.planTab,
-                  {
-                    backgroundColor: isSelected ? colors.tint : colors.secondaryBackground,
-                    borderColor: isSelected ? colors.tint : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.planTabText,
-                    { color: isSelected ? '#FFFFFF' : colors.textSecondary },
-                  ]}
-                >
-                  {p.title}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+      {/* Header bar with + Create Plan button */}
+      <View style={[styles.topBar, { borderBottomColor: colors.border, backgroundColor: colors.glassBackground }]}>
+        <View>
+          <Text style={[styles.screenTitle, { color: colors.text }]}>Reading Plans</Text>
+          <Text style={[styles.screenSubtitle, { color: colors.textSecondary }]}>
+            {plans.length} {plans.length === 1 ? 'Plan' : 'Plans'} in your library
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.addPlanBtn, { backgroundColor: colors.tint }]}
+          onPress={handleCreateNewPlan}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={18} color="#FFFFFF" style={{ marginRight: 4 }} />
+          <Text style={styles.addPlanBtnText}>New Plan</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Plan Summary Card */}
-      {activePlan && (
-        <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.planTitle, { color: colors.text }]}>{activePlan.title}</Text>
-          <Text style={[styles.planDescription, { color: colors.textSecondary }]}>
-            {activePlan.description}
-          </Text>
-
-          <View style={styles.progressRow}>
-            <View style={[styles.progressBarBg, { backgroundColor: colors.secondaryBackground }]}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  { backgroundColor: colors.success, width: `${progressPercent}%` },
-                ]}
-              />
-            </View>
-            <Text style={[styles.progressText, { color: colors.textSecondary }]}>
-              {completedDays.size}/{activePlan.durationDays} Days ({progressPercent}%)
-            </Text>
-          </View>
+      {isLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.tint} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading plans...</Text>
         </View>
-      )}
-
-      {/* Days Schedule Checklist */}
-      <FlatList
-        data={activePlan?.days || []}
-        keyExtractor={(item) => item.day.toString()}
-        contentContainerStyle={styles.daysList}
-        renderItem={({ item }) => {
-          const isDone = completedDays.has(item.day);
-          return (
-            <View
-              style={[
-                styles.dayCard,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: isDone ? colors.success : colors.border,
-                },
-              ]}
-            >
-              <TouchableOpacity
-                style={styles.checkboxTouch}
-                onPress={() => handleToggleDay(item.day)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={isDone ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={24}
-                  color={isDone ? colors.success : colors.textTertiary}
-                />
-              </TouchableOpacity>
+      ) : (
+        <FlatList
+          data={plans}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <View style={[styles.emptyIconCircle, { backgroundColor: colors.glassHighlight }]}>
+                <Ionicons name="calendar-outline" size={40} color={colors.gold} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Reading Plans Yet</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                Create a customized Bible reading plan to build a daily scripture habit.
+              </Text>
 
               <TouchableOpacity
-                style={styles.dayInfo}
-                onPress={() => handleOpenReading(item)}
-                activeOpacity={0.7}
+                style={[styles.emptyCreateBtn, { backgroundColor: colors.tint }]}
+                onPress={handleCreateNewPlan}
+                activeOpacity={0.8}
               >
-                <View style={styles.dayTitleRow}>
-                  <Text
-                    style={[
-                      styles.dayNumber,
-                      { color: isDone ? colors.textSecondary : colors.text },
-                      isDone ? styles.strikethrough : null,
-                    ]}
-                  >
-                    Day {item.day}: {item.title}
-                  </Text>
-                </View>
-                <View style={styles.passagesRow}>
-                  {item.readings.map((r, idx) => (
-                    <Text key={idx} style={[styles.passageText, { color: colors.tint }]}>
-                      {r.passage}
-                    </Text>
-                  ))}
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.readArrow}
-                onPress={() => handleOpenReading(item)}
-              >
-                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                <Ionicons name="sparkles" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={styles.emptyCreateBtnText}>Create Reading Plan</Text>
               </TouchableOpacity>
             </View>
-          );
-        }}
-      />
+          }
+          renderItem={({ item }) => {
+            const completedCount = plansProgress[item.id] || 0;
+            const progressPercent = item.durationDays > 0
+              ? Math.round((completedCount / item.durationDays) * 100)
+              : 0;
+            const isActive = activePlanId === item.id;
+            const nextDay = item.days[completedCount] || item.days[0];
+
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.planCard,
+                  {
+                    backgroundColor: colors.glassCard,
+                    borderColor: isActive ? colors.tint : colors.border,
+                  },
+                ]}
+                onPress={() => handleOpenPlanDetail(item)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <View style={styles.titleBadgeRow}>
+                      <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      {isActive && (
+                        <View style={[styles.activePill, { backgroundColor: colors.tintLight }]}>
+                          <Text style={[styles.activePillText, { color: colors.tint }]}>ACTIVE</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.cardDesc, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {item.description || `${item.durationDays} days reading journey`}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.percentBadge, { backgroundColor: colors.glassHighlight }]}>
+                    <Text style={[styles.percentText, { color: colors.gold }]}>{progressPercent}%</Text>
+                  </View>
+                </View>
+
+                {/* Progress Bar */}
+                <View style={styles.progressContainer}>
+                  <View style={[styles.progressBarBg, { backgroundColor: colors.glassInput }]}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        { backgroundColor: colors.success, width: `${progressPercent}%` },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.progressStatsRow}>
+                    <Text style={[styles.progressStatsText, { color: colors.textSecondary }]}>
+                      {completedCount} of {item.durationDays} Days ({progressPercent}%)
+                    </Text>
+                    {nextDay && (
+                      <Text style={[styles.nextDaySnippet, { color: colors.tint }]}>
+                        Next: Day {nextDay.day}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Card Footer */}
+                <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
+                  <View style={styles.daysBadge}>
+                    <Ionicons name="time-outline" size={14} color={colors.textTertiary} style={{ marginRight: 4 }} />
+                    <Text style={[styles.daysBadgeText, { color: colors.textTertiary }]}>
+                      {item.durationDays} Days Plan
+                    </Text>
+                  </View>
+                  <View style={styles.viewPlanRow}>
+                    <Text style={[styles.viewPlanText, { color: colors.tint }]}>View Day-by-Day</Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.tint} />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -199,96 +209,181 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  plansHeader: {
-    paddingVertical: 10,
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  plansScroll: {
+  screenTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  screenSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  addPlanBtn: {
     flexDirection: 'row',
-  },
-  planTab: {
-    paddingHorizontal: 14,
+    alignItems: 'center',
+    paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginRight: 8,
-  },
-  planTabText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  summaryCard: {
-    margin: 16,
-    padding: 16,
     borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
   },
-  planTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  planDescription: {
+  addPlanBtnText: {
+    color: '#FFFFFF',
     fontSize: 13,
-    lineHeight: 18,
+    fontWeight: '700',
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 13,
+  },
+  listContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  planCard: {
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
-  progressRow: {
-    marginTop: 4,
+  titleBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    marginRight: 8,
+  },
+  activePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  activePillText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  cardDesc: {
+    fontSize: 13,
+  },
+  percentBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  percentText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  progressContainer: {
+    marginBottom: 12,
   },
   progressBarBg: {
-    height: 8,
-    borderRadius: 4,
+    height: 6,
+    borderRadius: 3,
     overflow: 'hidden',
     marginBottom: 6,
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 3,
   },
-  progressText: {
+  progressStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressStatsText: {
     fontSize: 12,
     fontWeight: '600',
   },
-  daysList: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-  },
-  dayCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  checkboxTouch: {
-    paddingRight: 10,
-  },
-  dayInfo: {
-    flex: 1,
-  },
-  dayTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  dayNumber: {
-    fontSize: 15,
+  nextDaySnippet: {
+    fontSize: 12,
     fontWeight: '600',
   },
-  strikethrough: {
-    textDecorationLine: 'line-through' as const,
-  },
-  passagesRow: {
+  cardFooter: {
     flexDirection: 'row',
-    marginTop: 4,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  passageText: {
+  daysBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  daysBadgeText: {
+    fontSize: 12,
+  },
+  viewPlanRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewPlanText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
+    marginRight: 2,
   },
-  readArrow: {
-    paddingLeft: 8,
+  emptyState: {
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  emptyCreateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  emptyCreateBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

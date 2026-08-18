@@ -114,6 +114,17 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
         PRIMARY KEY (plan_id, day)
       );
 
+      -- 5. User Reading Plans Table
+      CREATE TABLE IF NOT EXISTS user_plans (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        duration_days INTEGER NOT NULL,
+        category TEXT,
+        days_json TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
       -- Fast Indexes
       CREATE INDEX IF NOT EXISTS idx_bookmarks_lookup ON bookmarks(book_id, chapter, verse);
       CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag);

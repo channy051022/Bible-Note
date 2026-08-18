@@ -147,7 +147,7 @@ export default function NoteDetailScreen() {
   const handleNavigateToReader = (bookId: number, chapter: number) => {
     closeVersePreview();
     router.replace({
-      pathname: '/(tabs)',
+      pathname: '/(tabs)/bible',
       params: { bookId: bookId.toString(), chapter: chapter.toString() },
     });
   };
@@ -227,7 +227,7 @@ export default function NoteDetailScreen() {
       />
 
       {/* Tags Section */}
-      <View style={[styles.tagsBar, { borderBottomColor: colors.border, backgroundColor: colors.background }]}>
+      <View style={[styles.tagsBar, { borderBottomColor: colors.border, backgroundColor: colors.glassBackground }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagsScroll}>
           {tags.map((tag) => (
             <TagPill
@@ -239,7 +239,7 @@ export default function NoteDetailScreen() {
           ))}
 
           {showTagInput ? (
-            <View style={[styles.tagInputContainer, { backgroundColor: colors.secondaryBackground, borderColor: colors.border }]}>
+            <View style={[styles.tagInputContainer, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
               <TextInput
                 style={[styles.tagInput, { color: colors.text }]}
                 placeholder="Tag name"
@@ -257,7 +257,7 @@ export default function NoteDetailScreen() {
           ) : (
             <TouchableOpacity
               onPress={() => setShowTagInput(true)}
-              style={[styles.addTagBtn, { borderColor: colors.border }]}
+              style={[styles.addTagBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
             >
               <Ionicons name="add" size={14} color={colors.textSecondary} style={{ marginRight: 4 }} />
               <Text style={[styles.addTagText, { color: colors.textSecondary }]}>Add Tag</Text>

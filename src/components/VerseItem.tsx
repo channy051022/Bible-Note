@@ -30,16 +30,18 @@ export const VerseItem: React.FC<VerseItemProps> = ({
         onPress={() => onPressVerse?.(verse)}
         activeOpacity={0.65}
       >
-        <Text style={[styles.verseNumber, { color: colors.tint, fontSize: fontSize - 4 }]}>
-          {verse.verse}
-        </Text>
+        <View style={[styles.verseNumberBadge, { backgroundColor: colors.glassPill, borderColor: colors.versePillBorder }]}>
+          <Text style={[styles.verseNumber, { color: colors.tint, fontSize: fontSize - 5 }]}>
+            {verse.verse}
+          </Text>
+        </View>
         <Text
           style={[
             styles.verseText,
             {
               color: colors.text,
               fontSize: fontSize,
-              lineHeight: fontSize * 1.5,
+              lineHeight: fontSize * 1.55,
             },
           ]}
         >
@@ -51,11 +53,14 @@ export const VerseItem: React.FC<VerseItemProps> = ({
         <TouchableOpacity
           onPress={() => onToggleBookmark(verse.verse)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.actionBtn}
+          style={[
+            styles.actionBtn,
+            isBookmarked && { backgroundColor: colors.glassHighlight, borderRadius: 8, padding: 3 },
+          ]}
         >
           <Ionicons
             name={isBookmarked ? 'bookmark' : 'bookmark-outline'}
-            size={19}
+            size={18}
             color={isBookmarked ? colors.gold : colors.textTertiary}
           />
         </TouchableOpacity>
@@ -66,7 +71,7 @@ export const VerseItem: React.FC<VerseItemProps> = ({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={styles.actionBtn}
           >
-            <Ionicons name="create-outline" size={19} color={colors.textTertiary} />
+            <Ionicons name="create-outline" size={18} color={colors.textTertiary} />
           </TouchableOpacity>
         )}
       </View>
@@ -87,16 +92,26 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingRight: 10,
+    paddingRight: 8,
+  },
+  verseNumberBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginRight: 10,
+    marginTop: 3,
+    minWidth: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   verseNumber: {
     fontWeight: '700',
-    width: 26,
-    paddingTop: 2,
   },
   verseText: {
     flex: 1,
     fontFamily: 'System',
+    fontWeight: '400',
   },
   actions: {
     flexDirection: 'row',
@@ -104,6 +119,7 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   actionBtn: {
-    marginLeft: 10,
+    marginLeft: 8,
+    padding: 2,
   },
 });

@@ -2,11 +2,32 @@ import React from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
-import { Platform, TouchableOpacity } from 'react-native';
+import { Platform, TouchableOpacity, StyleSheet, View } from 'react-native';
 
 export default function TabLayout() {
   const router = useRouter();
   const { colors } = useTheme();
+
+  const renderHeaderRight = () => (
+    <View style={styles.headerRightContainer}>
+      <TouchableOpacity
+        onPress={() => router.push('/saved')}
+        style={styles.headerIconButton}
+        hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="bookmark-outline" size={21} color={colors.text} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => router.push('/settings')}
+        style={styles.headerIconButton}
+        hitSlop={{ top: 8, bottom: 8, left: 6, right: 8 }}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="settings-outline" size={21} color={colors.text} />
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <Tabs
@@ -14,11 +35,17 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.tint,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: colors.card,
-          borderTopColor: colors.border,
+          backgroundColor: colors.tabBar,
+          borderTopColor: colors.tabBarBorder,
+          borderTopWidth: StyleSheet.hairlineWidth,
           height: Platform.OS === 'ios' ? 88 : 64,
           paddingBottom: Platform.OS === 'ios' ? 30 : 10,
           paddingTop: 8,
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: 0.06,
+          shadowRadius: 10,
         },
         headerStyle: {
           backgroundColor: colors.background,
@@ -26,36 +53,40 @@ export default function TabLayout() {
         headerTitleStyle: {
           color: colors.text,
           fontWeight: '700',
+          fontSize: 18,
+          letterSpacing: -0.3,
         },
         headerShadowVisible: false,
+        headerRight: renderHeaderRight,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
+          title: 'Home',
+          headerTitle: 'SHEPHERD',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="bible"
+        options={{
           title: 'Bible',
           headerTitle: 'E-Bible',
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => router.push('/settings')}
-              style={{ marginRight: 16, padding: 4 }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="settings-outline" size={22} color={colors.text} />
-            </TouchableOpacity>
-          ),
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'book' : 'book-outline'} size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="alarm"
         options={{
-          title: 'Search',
+          title: 'Alarm',
+          headerTitle: 'Spiritual Alarms',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'search' : 'search-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'alarm' : 'alarm-outline'} size={size} color={color} />
           ),
         }}
       />
@@ -77,15 +108,18 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="saved"
-        options={{
-          title: 'Saved',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'bookmark' : 'bookmark-outline'} size={size} color={color} />
-          ),
-        }}
-      />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  headerIconButton: {
+    padding: 6,
+    marginLeft: 4,
+  },
+});

@@ -75,7 +75,7 @@ export default function NotesManagerScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Top Bar with New Note Action & Tags */}
-      <View style={[styles.topSection, { borderBottomColor: colors.border }]}>
+      <View style={[styles.topSection, { borderBottomColor: colors.border, backgroundColor: colors.glassBackground }]}>
         <View style={styles.headerRow}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Study Notes</Text>
           <TouchableOpacity
@@ -142,7 +142,7 @@ export default function NotesManagerScreen() {
         }
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={[styles.noteCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.noteCard, { backgroundColor: colors.glassCard, borderColor: colors.border }]}
             onPress={() => handleOpenNote(item.id)}
             activeOpacity={0.7}
           >
@@ -150,9 +150,11 @@ export default function NotesManagerScreen() {
               <Text style={[styles.noteTitle, { color: colors.text }]} numberOfLines={1}>
                 {item.title || 'Untitled Note'}
               </Text>
-              <Text style={[styles.noteDate, { color: colors.textTertiary }]}>
-                {formatDate(item.updated_at)}
-              </Text>
+              <View style={[styles.dateBadge, { backgroundColor: colors.glassInput }]}>
+                <Text style={[styles.noteDate, { color: colors.textSecondary }]}>
+                  {formatDate(item.updated_at)}
+                </Text>
+              </View>
             </View>
 
             <Text style={[styles.noteSnippet, { color: colors.textSecondary }]} numberOfLines={2}>
@@ -164,7 +166,7 @@ export default function NotesManagerScreen() {
                 {item.tags.map((tag) => (
                   <View
                     key={tag}
-                    style={[styles.miniTag, { backgroundColor: colors.secondaryBackground }]}
+                    style={[styles.miniTag, { backgroundColor: colors.glassPill, borderColor: colors.versePillBorder }]}
                   >
                     <Text style={[styles.miniTagText, { color: colors.tint }]}>#{tag}</Text>
                   </View>
@@ -203,25 +205,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 18,
+    paddingVertical: 8,
+    borderRadius: 16,
+    shadowColor: '#007AFF',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
   createBtnText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   tagsContainer: {
     paddingVertical: 4,
   },
   listContent: {
     padding: 16,
+    paddingBottom: 40,
   },
   noteCard: {
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   noteHeader: {
     flexDirection: 'row',
@@ -231,12 +244,19 @@ const styles = StyleSheet.create({
   },
   noteTitle: {
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: '700',
     flex: 1,
     marginRight: 8,
+    letterSpacing: -0.2,
+  },
+  dateBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   noteDate: {
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: '600',
   },
   noteSnippet: {
     fontSize: 14,
@@ -250,7 +270,8 @@ const styles = StyleSheet.create({
   miniTag: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 6,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     marginRight: 6,
     marginTop: 2,
   },

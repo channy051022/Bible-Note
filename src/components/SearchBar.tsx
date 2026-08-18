@@ -19,7 +19,15 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const { colors } = useTheme();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.secondaryBackground }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.glassInput,
+          borderColor: colors.border,
+        },
+      ]}
+    >
       <Ionicons name="search" size={18} color={colors.textSecondary} style={styles.searchIcon} />
       <TextInput
         style={[styles.input, { color: colors.text }]}
@@ -45,18 +53,24 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
     marginHorizontal: 16,
     marginVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     padding: 0,
     fontFamily: 'System',
   },

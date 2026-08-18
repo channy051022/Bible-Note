@@ -48,15 +48,15 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
               style={[
                 styles.modalContainer,
                 {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
+                  backgroundColor: colors.glassCardElevated,
+                  borderColor: colors.glassBorder,
                 },
               ]}
             >
               {/* Header */}
               <View style={[styles.header, { borderBottomColor: colors.border }]}>
                 <View style={styles.headerTitleRow}>
-                  <Ionicons name="book-outline" size={20} color={colors.tint} style={{ marginRight: 8 }} />
+                  <Ionicons name="book" size={20} color={colors.tint} style={{ marginRight: 8 }} />
                   <Text style={[styles.title, { color: colors.text }]}>
                     {passage?.formattedTitle ?? 'Scripture Reference'}
                   </Text>

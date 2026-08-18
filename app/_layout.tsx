@@ -6,6 +6,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
 import { DATABASE_NAME, copyDatabaseFileIfNotExists, initializeDatabase } from '../src/db/init';
 import { ThemeProvider, useTheme } from '../src/hooks/useTheme';
+import { NotificationService } from '../src/services/notificationService';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -48,6 +49,24 @@ function RootNavigationLayout() {
         />
 
         <Stack.Screen
+          name="saved"
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            title: 'Saved Bookmarks',
+          }}
+        />
+
+        <Stack.Screen
+          name="widgets"
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            title: 'Home Screen Widgets',
+          }}
+        />
+
+        <Stack.Screen
           name="note/[id]"
           options={{
             presentation: 'modal',
@@ -62,6 +81,23 @@ function RootNavigationLayout() {
             presentation: 'modal',
             headerShown: true,
             title: 'New Note',
+          }}
+        />
+
+        <Stack.Screen
+          name="plan/[id]"
+          options={{
+            headerShown: true,
+            title: 'Reading Plan',
+          }}
+        />
+
+        <Stack.Screen
+          name="plan/new"
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            title: 'Create Plan',
           }}
         />
 
@@ -88,6 +124,8 @@ export default function RootLayout() {
       try {
         await copyDatabaseFileIfNotExists();
         setIsDbReady(true);
+        // Automatically schedule daily morning Verse of the Day lockscreen notification
+        NotificationService.setupDailyLockscreenVerse(8, 0).catch(() => {});
       } catch (e) {
         console.error('Database file copy failed:', e);
         setError(e as Error);
