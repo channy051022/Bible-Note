@@ -30,7 +30,7 @@ function AppLoadingScreen() {
           <Text style={styles.loadingStatusText}>Opening your spiritual sanctuary...</Text>
         </View>
       </View>
-      <Text style={styles.loadingFooter}>Dual KJV & Cebuano • Offline Sanctuary</Text>
+      <Text style={styles.loadingFooter}>Developer: Christian Faith Mestola - AsyncDev</Text>
     </View>
   );
 }

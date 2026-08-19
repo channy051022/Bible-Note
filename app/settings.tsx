@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -56,6 +57,21 @@ export default function SettingsScreen() {
   const handleUpdateVersion = (newVersion: BibleVersion) => {
     setVersionState(newVersion);
     setItem(StorageKeys.BIBLE_VERSION, newVersion);
+  };
+
+  const handleContactSupport = async () => {
+    const messengerUrl = 'https://m.me/christian.mestola.7';
+    const fbUrl = 'https://www.facebook.com/christian.mestola.7';
+    try {
+      const supported = await Linking.canOpenURL(messengerUrl);
+      if (supported) {
+        await Linking.openURL(messengerUrl);
+      } else {
+        await Linking.openURL(fbUrl);
+      }
+    } catch {
+      Linking.openURL(fbUrl);
+    }
   };
 
   const themeModeOptions: { label: string; value: ThemeMode; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -362,14 +378,54 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Section 5: App Info */}
+      {/* Section 5: Support & Contact Developer */}
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>SUPPORT & FEEDBACK</Text>
+      </View>
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: colors.glassCard, borderColor: colors.border }]}
+        onPress={handleContactSupport}
+        activeOpacity={0.7}
+      >
+        <View style={styles.rowBetween}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: 'rgba(0, 132, 255, 0.12)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginRight: 12,
+              }}
+            >
+              <Ionicons name="chatbubbles" size={22} color="#0084FF" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: colors.text, marginBottom: 2 }]}>Contact Support</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                Chat with developer on Facebook Messenger
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="open-outline" size={18} color={colors.textSecondary} />
+        </View>
+      </TouchableOpacity>
+
+      {/* Section 6: App Info */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>ABOUT</Text>
       </View>
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 50 }]}>
         <View style={styles.infoRow}>
           <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Application</Text>
-          <Text style={[styles.infoValue, { color: colors.text }]}>Bible Note (E-Bible Study)</Text>
+          <Text style={[styles.infoValue, { color: colors.text }]}>SHEPHERD (Bible Study)</Text>
+        </View>
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <View style={styles.infoRow}>
+          <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Developer</Text>
+          <Text style={[styles.infoValue, { color: colors.text }]}>Christian Faith Mestola</Text>
         </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <View style={styles.infoRow}>
