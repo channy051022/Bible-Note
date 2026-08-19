@@ -83,6 +83,25 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           headerTitle: 'SHEPHERD',
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => router.push('/game')}
+              style={{
+                marginLeft: 16,
+                padding: 6,
+                borderRadius: 10,
+                backgroundColor: colors.glassInput,
+                borderWidth: 1,
+                borderColor: colors.border,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="game-controller" size={19} color={colors.tint} />
+            </TouchableOpacity>
+          ),
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'home' : 'home-outline'} size={23} color={color} />
           ),

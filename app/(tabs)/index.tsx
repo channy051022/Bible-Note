@@ -8,6 +8,11 @@ import {
   ActivityIndicator,
   Share,
   Image,
+  Modal,
+  TextInput,
+  Alert,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -17,11 +22,12 @@ import { BibleRepo } from '../../src/db/bibleRepo';
 import { NotesRepo } from '../../src/db/notesRepo';
 import { PlansRepo } from '../../src/db/plansRepo';
 import { Note } from '../../src/types/note';
-import { getItem, StorageKeys } from '../../src/utils/storage';
+import { getItem, setItem, StorageKeys } from '../../src/utils/storage';
 import { BibleVersion, Book, Verse } from '../../src/types/bible';
 import { getTodayVerseRef, DailyVerseRef } from '../../src/constants/VerseOfTheDay';
 import { ReadingPlan, ReadingPlanDay } from '../../src/types/plan';
 import { AnimatedMascot } from '../../src/components/AnimatedMascot';
+import { DailyPrayer, DEFAULT_DAILY_PRAYER, PRAYER_TEMPLATES } from '../../src/types/prayer';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -47,6 +53,14 @@ export default function HomeScreen() {
   // Recent Notes state
   const [recentNotes, setRecentNotes] = useState<Note[]>([]);
   const [activeVersion, setActiveVersion] = useState<BibleVersion>('KJV');
+
+  // Daily Prayer & Reflection state
+  const [dailyPrayer, setDailyPrayer] = useState<DailyPrayer>(DEFAULT_DAILY_PRAYER);
+  const [prayerModalVisible, setPrayerModalVisible] = useState<boolean>(false);
+  const [editingTitle, setEditingTitle] = useState<string>('');
+  const [editingPrayer, setEditingPrayer] = useState<string>('');
+  const [editingReflection, setEditingReflection] = useState<string>('');
+  const [editingScriptureRef, setEditingScriptureRef] = useState<string>('');
 
   // Compute greeting and date
   useEffect(() => {
@@ -74,6 +88,10 @@ export default function HomeScreen() {
     try {
       const version = getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
       setActiveVersion(version);
+
+      // 0. Fetch Saved Daily Prayer
+      const savedPrayer = getItem<DailyPrayer>(StorageKeys.DAILY_PRAYER, DEFAULT_DAILY_PRAYER);
+      setDailyPrayer(savedPrayer);
 
       // 1. Fetch Today's Verse
       setIsLoadingDailyVerse(true);
@@ -125,6 +143,45 @@ export default function HomeScreen() {
       loadHomeData();
     }, [loadHomeData])
   );
+
+  // Action: Daily Prayer Customization Handlers
+  const handleOpenPrayerModal = () => {
+    setEditingTitle(dailyPrayer.title || DEFAULT_DAILY_PRAYER.title);
+    setEditingPrayer(dailyPrayer.prayer || DEFAULT_DAILY_PRAYER.prayer);
+    setEditingReflection(dailyPrayer.reflection || '');
+    setEditingScriptureRef(dailyPrayer.scriptureRef || '');
+    setPrayerModalVisible(true);
+  };
+
+  const handleApplyTemplate = (template: DailyPrayer) => {
+    setEditingTitle(template.title);
+    setEditingPrayer(template.prayer);
+    setEditingReflection(template.reflection || '');
+    setEditingScriptureRef(template.scriptureRef || '');
+  };
+
+  const handleSavePrayer = () => {
+    if (!editingPrayer.trim()) {
+      Alert.alert('Prayer Required', 'Please enter your prayer text before saving.');
+      return;
+    }
+    const newPrayer: DailyPrayer = {
+      title: editingTitle.trim() || 'Daily Prayer & Reflection',
+      prayer: editingPrayer.trim(),
+      reflection: editingReflection.trim() || undefined,
+      scriptureRef: editingScriptureRef.trim() || undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    setItem(StorageKeys.DAILY_PRAYER, newPrayer);
+    setDailyPrayer(newPrayer);
+    setPrayerModalVisible(false);
+  };
+
+  const handleResetPrayer = () => {
+    setItem(StorageKeys.DAILY_PRAYER, DEFAULT_DAILY_PRAYER);
+    setDailyPrayer(DEFAULT_DAILY_PRAYER);
+    setPrayerModalVisible(false);
+  };
 
   // Action: Share Daily Verse
   const handleShareDailyVerse = async () => {
@@ -393,13 +450,160 @@ export default function HomeScreen() {
       {/* 7. Daily Spiritual Reflection / Prayer Focus */}
       <View style={[styles.prayerCard, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
         <View style={styles.prayerHeader}>
-          <Ionicons name="heart" size={18} color="#FF2D55" style={{ marginRight: 6 }} />
-          <Text style={[styles.prayerTitle, { color: colors.text }]}>Daily Prayer & Reflection</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+            <Ionicons name="heart" size={18} color="#FF2D55" style={{ marginRight: 6 }} />
+            <Text style={[styles.prayerTitle, { color: colors.text }]} numberOfLines={1}>
+              {dailyPrayer.title || 'Daily Prayer & Reflection'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.editPrayerBtn, { backgroundColor: colors.tintLight, borderColor: colors.tint }]}
+            onPress={handleOpenPrayerModal}
+            activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Ionicons name="create-outline" size={13} color={colors.tint} style={{ marginRight: 4 }} />
+            <Text style={[styles.editPrayerBtnText, { color: colors.tint }]}>Customize</Text>
+          </TouchableOpacity>
         </View>
+
         <Text style={[styles.prayerText, { color: colors.textSecondary }]}>
-          "Lord, grant me wisdom to understand Your Word, peace to quiet my anxieties, and courage to walk faithfully in Your love today. Amen."
+          "{dailyPrayer.prayer}"
         </Text>
+
+        {dailyPrayer.reflection ? (
+          <View style={[styles.reflectionInsightBox, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
+            <Ionicons name="bulb-outline" size={14} color={colors.tint} style={{ marginRight: 6, marginTop: 1 }} />
+            <Text style={[styles.reflectionInsightText, { color: colors.text }]}>
+              {dailyPrayer.reflection}
+            </Text>
+          </View>
+        ) : null}
+
+        {dailyPrayer.scriptureRef ? (
+          <View style={styles.prayerScriptureRow}>
+            <Ionicons name="book-outline" size={12} color={colors.textTertiary} style={{ marginRight: 4 }} />
+            <Text style={[styles.prayerScriptureRef, { color: colors.textTertiary }]}>
+              {dailyPrayer.scriptureRef}
+            </Text>
+          </View>
+        ) : null}
       </View>
+
+      {/* Modal for Customizing Daily Prayer & Reflection */}
+      <Modal visible={prayerModalVisible} animationType="slide" transparent={true}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}
+        >
+          <View style={[styles.modalSheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Customize Prayer & Reflection</Text>
+              <TouchableOpacity onPress={() => setPrayerModalVisible(false)}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {/* Quick Inspiration Templates */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary }]}>INSPIRATION TEMPLATES</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templatesScroll}>
+                {PRAYER_TEMPLATES.map((tpl) => (
+                  <TouchableOpacity
+                    key={tpl.id}
+                    onPress={() => handleApplyTemplate(tpl.prayer)}
+                    style={[
+                      styles.templatePill,
+                      { backgroundColor: colors.glassInput, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.templatePillText, { color: colors.text }]}>{tpl.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Title Input */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 14 }]}>
+                PRAYER TITLE
+              </Text>
+              <TextInput
+                style={[styles.modalInput, { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                value={editingTitle}
+                onChangeText={setEditingTitle}
+                placeholder="e.g. Morning Gratitude, Prayer for Family..."
+                placeholderTextColor={colors.textTertiary}
+              />
+
+              {/* Prayer Text Input */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 14 }]}>
+                DAILY PRAYER / INTENTIONS
+              </Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  styles.prayerMultilineInput,
+                  { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border },
+                ]}
+                value={editingPrayer}
+                onChangeText={setEditingPrayer}
+                placeholder="Write your personal prayer, devotion, or focus for the day..."
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                numberOfLines={4}
+              />
+
+              {/* Reflection Input */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 14 }]}>
+                DAILY REFLECTION / MEDITATION (OPTIONAL)
+              </Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  styles.reflectionMultilineInput,
+                  { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border },
+                ]}
+                value={editingReflection}
+                onChangeText={setEditingReflection}
+                placeholder="Key takeaway, thought, or reflection insight..."
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                numberOfLines={2}
+              />
+
+              {/* Scripture Reference */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 14 }]}>
+                ASSOCIATED SCRIPTURE (OPTIONAL)
+              </Text>
+              <TextInput
+                style={[styles.modalInput, { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                value={editingScriptureRef}
+                onChangeText={setEditingScriptureRef}
+                placeholder="e.g. Psalm 23:1, Philippians 4:6, John 14:27..."
+                placeholderTextColor={colors.textTertiary}
+              />
+
+              {/* Action Buttons */}
+              <TouchableOpacity
+                style={[styles.savePrayerBtn, { backgroundColor: colors.tint }]}
+                onPress={handleSavePrayer}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.savePrayerBtnText}>Save Prayer & Reflection</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.resetPrayerBtn, { borderColor: colors.border }]}
+                onPress={handleResetPrayer}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.resetPrayerBtnText, { color: colors.textSecondary }]}>
+                  Reset to Default Prayer
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
   );
 }
@@ -779,15 +983,140 @@ const styles = StyleSheet.create({
   prayerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
   prayerTitle: {
     fontSize: 15,
+    fontWeight: '700',
+  },
+  editPrayerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  editPrayerBtnText: {
+    fontSize: 11,
     fontWeight: '700',
   },
   prayerText: {
     fontSize: 13,
     lineHeight: 20,
     fontStyle: 'italic',
+  },
+  reflectionInsightBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 10,
+  },
+  reflectionInsightText: {
+    fontSize: 12,
+    lineHeight: 17,
+    flex: 1,
+  },
+  prayerScriptureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    alignSelf: 'flex-end',
+  },
+  prayerScriptureRef: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    maxHeight: '90%',
+    paddingBottom: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+  },
+  modalSectionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  templatesScroll: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  templatePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  templatePillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  prayerMultilineInput: {
+    height: 100,
+    textAlignVertical: 'top',
+    paddingTop: 10,
+  },
+  reflectionMultilineInput: {
+    height: 60,
+    textAlignVertical: 'top',
+    paddingTop: 10,
+  },
+  savePrayerBtn: {
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    marginTop: 18,
+    marginBottom: 10,
+  },
+  savePrayerBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  resetPrayerBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 30,
+  },
+  resetPrayerBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

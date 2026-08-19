@@ -12,7 +12,7 @@ export const BIBLE_VERSIONS: BibleVersionMeta[] = [
     id: 'CEB',
     name: 'Cebuano Pinadayag',
     shortName: 'CEB',
-    language: 'Binisaya / Cebuano',
+    language: 'Cebuano',
     description: 'Cebuano Bugna / Pinadayag Translation',
   },
 ];

@@ -135,6 +135,54 @@ function RootNavigationLayout() {
             gestureEnabled: false,
           }}
         />
+
+        <Stack.Screen
+          name="game/index"
+          options={{
+            headerShown: false,
+            title: 'Game Hub',
+          }}
+        />
+
+        <Stack.Screen
+          name="game/scramble"
+          options={{
+            headerShown: false,
+            title: 'Verse Scramble',
+          }}
+        />
+
+        <Stack.Screen
+          name="game/books-sort"
+          options={{
+            headerShown: false,
+            title: 'Canonical Book Sorter',
+          }}
+        />
+
+        <Stack.Screen
+          name="game/crossword"
+          options={{
+            headerShown: false,
+            title: 'Bible Crossword',
+          }}
+        />
+
+        <Stack.Screen
+          name="game/trivia"
+          options={{
+            headerShown: false,
+            title: 'Bible Trivia',
+          }}
+        />
+
+        <Stack.Screen
+          name="game/settings"
+          options={{
+            headerShown: false,
+            title: 'Game Settings',
+          }}
+        />
       </Stack>
     </>
   );
@@ -146,16 +194,26 @@ export default function RootLayout() {
 
   useEffect(() => {
     async function prepare() {
+      const minLoadDelay = new Promise((resolve) => setTimeout(resolve, 2000));
       try {
-        await copyDatabaseFileIfNotExists();
+        // Dismiss the static OS splash screen right away so our custom AppLoadingScreen is displayed
+        await SplashScreen.hideAsync().catch(() => {});
+
+        // Concurrently run database initialization and enforce a minimum 2-second loading duration
+        await Promise.all([
+          copyDatabaseFileIfNotExists(),
+          minLoadDelay,
+        ]);
+
         setIsDbReady(true);
         // Automatically schedule daily morning Verse of the Day lockscreen notification
         NotificationService.setupDailyLockscreenVerse(8, 0).catch(() => {});
       } catch (e) {
         console.error('Database file copy failed:', e);
         setError(e as Error);
-      } finally {
-        await SplashScreen.hideAsync().catch(() => {});
+        // Ensure 2-second transition even on error
+        await minLoadDelay;
+        setIsDbReady(true);
       }
     }
 

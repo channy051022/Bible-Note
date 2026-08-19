@@ -36,6 +36,7 @@ export const StorageKeys = {
   LAST_READ_CHAPTER: 'last_read_chapter', // number
   ACTIVE_PLAN_ID: 'active_plan_id', // string
   BIBLE_VERSION: 'bible_version', // 'KJV' | 'CEB'
+  DAILY_PRAYER: 'custom_daily_prayer', // DailyPrayer
 } as const;
 
 export const getItem = <T>(key: string, defaultValue: T): T => {

@@ -7,41 +7,24 @@ import { BIBLE_BOOKS } from '../constants/BibleBooks';
 
 const ALARMS_STORAGE_KEY = 'SHEPHERD_SPIRITUAL_ALARMS';
 
-const DEFAULT_ALARMS: SpiritualAlarm[] = [
-  {
-    id: 'default-morning-alarm',
-    hour: 7,
-    minute: 0,
-    label: 'Morning Scripture & Prayer',
-    days: [0, 1, 2, 3, 4, 5, 6],
-    isEnabled: true,
-    verseSource: 'daily',
-  },
-  {
-    id: 'default-evening-alarm',
-    hour: 21,
-    minute: 0,
-    label: 'Night Peace & Gratitude',
-    days: [0, 1, 2, 3, 4, 5, 6],
-    isEnabled: false,
-    verseSource: 'psalm23',
-    customCitation: 'Psalm 23:1-2',
-    customText: 'The Lord is my shepherd; I shall not want. He maketh me to lie down in green pastures.',
-    bookId: 19,
-    chapter: 23,
-    verse: 1,
-  },
-];
+const DEFAULT_ALARMS: SpiritualAlarm[] = [];
 
 export const AlarmService = {
   /**
-   * Loads all saved alarms (or initializes with defaults)
+   * Loads all saved alarms (starts empty if no alarms have been created)
    */
   async getAlarms(): Promise<SpiritualAlarm[]> {
     const saved = getItem<SpiritualAlarm[] | null>(ALARMS_STORAGE_KEY, null);
-    if (!saved || saved.length === 0) {
-      setItem(ALARMS_STORAGE_KEY, DEFAULT_ALARMS);
-      return DEFAULT_ALARMS;
+    if (!saved) {
+      return [];
+    }
+    // Filter out previously injected built-in default alarm IDs if user wants clean slate
+    const filtered = saved.filter(
+      (a) => a.id !== 'default-morning-alarm' && a.id !== 'default-evening-alarm'
+    );
+    if (filtered.length !== saved.length) {
+      setItem(ALARMS_STORAGE_KEY, filtered);
+      return filtered;
     }
     return saved;
   },

@@ -347,4 +347,61 @@ export const BibleRepo = {
       return false;
     }
   },
+
+  /**
+   * Retrieves a random popular verse for games like Verse Scramble with difficulty filter.
+   */
+  async getRandomScrambleVerse(
+    db: SQLiteDatabase,
+    version: BibleVersion = 'KJV',
+    difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+  ): Promise<Verse> {
+    const easyVerses = [
+      { bookId: 19, chapter: 23, verse: 1 }, // Psalm 23:1 (7 words)
+      { bookId: 50, chapter: 4, verse: 13 }, // Philippians 4:13 (10 words)
+      { bookId: 1, chapter: 1, verse: 1 }, // Genesis 1:1 (10 words)
+      { bookId: 19, chapter: 46, verse: 1 }, // Psalm 46:1 (11 words)
+      { bookId: 52, chapter: 5, verse: 16 }, // 1 Thessalonians 5:16 (2 words)
+      { bookId: 52, chapter: 5, verse: 17 }, // 1 Thessalonians 5:17 (3 words)
+      { bookId: 62, chapter: 4, verse: 19 }, // 1 John 4:19 (8 words)
+    ];
+
+    const mediumVerses = [
+      { bookId: 43, chapter: 3, verse: 16 }, // John 3:16
+      { bookId: 20, chapter: 3, verse: 5 }, // Proverbs 3:5
+      { bookId: 40, chapter: 6, verse: 33 }, // Matthew 6:33
+      { bookId: 6, chapter: 1, verse: 9 }, // Joshua 1:9
+      { bookId: 23, chapter: 40, verse: 31 }, // Isaiah 40:31
+      { bookId: 20, chapter: 16, verse: 3 }, // Proverbs 16:3
+      { bookId: 46, chapter: 13, verse: 4 }, // 1 Corinthians 13:4
+    ];
+
+    const hardVerses = [
+      { bookId: 45, chapter: 8, verse: 28 }, // Romans 8:28
+      { bookId: 24, chapter: 29, verse: 11 }, // Jeremiah 29:11
+      { bookId: 19, chapter: 119, verse: 105 }, // Psalm 119:105
+      { bookId: 50, chapter: 4, verse: 6 }, // Philippians 4:6
+      { bookId: 20, chapter: 3, verse: 6 }, // Proverbs 3:6
+      { bookId: 43, chapter: 14, verse: 6 }, // John 14:6
+      { bookId: 45, chapter: 12, verse: 2 }, // Romans 12:2
+    ];
+
+    const pool = difficulty === 'easy' ? easyVerses : difficulty === 'hard' ? hardVerses : mediumVerses;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const list = await this.getChapterVerses(db, pick.bookId, pick.chapter, version);
+    const found = list.find((v) => v.verse === pick.verse);
+    if (found) return found;
+
+    return (
+      list[0] || {
+        id: 43003016,
+        book_id: 43,
+        chapter: 3,
+        verse: 16,
+        text: 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.',
+        book_name: 'John',
+        book_abbreviation: 'John',
+      }
+    );
+  },
 };

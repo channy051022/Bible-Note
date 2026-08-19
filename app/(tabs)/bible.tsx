@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useBiblePassage } from '../../src/hooks/useBiblePassage';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -22,18 +22,29 @@ import { Verse, BibleSearchMatch, BibleVersion } from '../../src/types/bible';
 import { BibleRepo } from '../../src/db/bibleRepo';
 import { BIBLE_VERSIONS } from '../../src/constants/BibleVersions';
 import { useSQLiteContext } from 'expo-sqlite';
+import { getItem, StorageKeys } from '../../src/utils/storage';
 
 export default function EBibleScreen() {
   const params = useLocalSearchParams<{ bookId?: string | string[]; chapter?: string | string[] }>();
   const router = useRouter();
   const db = useSQLiteContext();
   const { colors } = useTheme();
-  const [fontSize, setFontSize] = useState<number>(18);
+  const [fontSize, setFontSize] = useState<number>(() => getItem<number>(StorageKeys.FONT_SIZE, 18));
   const flatListRef = useRef<FlatList<Verse>>(null);
+
+  // Sync font size whenever user returns from Settings
+  useFocusEffect(
+    useCallback(() => {
+      const savedFontSize = getItem<number>(StorageKeys.FONT_SIZE, 18);
+      setFontSize(savedFontSize);
+    }, [])
+  );
 
   // Selected verse to display in reader modal
   const [readingVerse, setReadingVerse] = useState<Verse | null>(null);
   const [showVersionPicker, setShowVersionPicker] = useState<boolean>(false);
+  const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
+  const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false);
 
   // Top Quick Jump Search state
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -126,14 +137,6 @@ export default function EBibleScreen() {
     });
   };
 
-  const increaseFontSize = () => {
-    setFontSize((prev) => Math.min(prev + 2, 28));
-  };
-
-  const decreaseFontSize = () => {
-    setFontSize((prev) => Math.max(prev - 2, 14));
-  };
-
   const renderFooter = () => {
     if (verses.length === 0) return null;
     return (
@@ -207,26 +210,8 @@ export default function EBibleScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Font Controls & Chapter Nav Buttons */}
+          {/* Chapter Nav, Search & Full Screen Buttons */}
           <View style={styles.controlsRow}>
-            <View
-              style={[
-                styles.fontControls,
-                {
-                  backgroundColor: colors.glassInput,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <TouchableOpacity onPress={decreaseFontSize} style={styles.fontBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Text style={[styles.fontBtnText, { color: colors.textSecondary }]}>A-</Text>
-              </TouchableOpacity>
-              <View style={[styles.fontDivider, { backgroundColor: colors.border }]} />
-              <TouchableOpacity onPress={increaseFontSize} style={styles.fontBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Text style={[styles.fontBtnText, { color: colors.textSecondary, fontWeight: '700' }]}>A+</Text>
-              </TouchableOpacity>
-            </View>
-
             <View style={styles.navButtons}>
               <TouchableOpacity
                 onPress={goToPreviousChapter}
@@ -256,41 +241,116 @@ export default function EBibleScreen() {
               >
                 <Ionicons name="chevron-forward" size={18} color={colors.text} />
               </TouchableOpacity>
+
+              {/* Expandable Search Icon Button */}
+              {!isFullScreen && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsSearchExpanded((prev) => !prev);
+                    if (isSearchExpanded) {
+                      setSearchQuery('');
+                      setShowSearchResults(false);
+                    }
+                  }}
+                  style={[
+                    styles.navBtn,
+                    {
+                      backgroundColor: isSearchExpanded ? colors.tintLight : colors.glassInput,
+                      borderColor: isSearchExpanded ? colors.tint : colors.border,
+                      marginLeft: 6,
+                    },
+                  ]}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name={isSearchExpanded ? 'search' : 'search-outline'}
+                    size={16}
+                    color={isSearchExpanded ? colors.tint : colors.text}
+                  />
+                </TouchableOpacity>
+              )}
+
+              {/* Full Page Reading Mode Toggle (placed right at the side of search) */}
+              <TouchableOpacity
+                onPress={() => {
+                  const nextState = !isFullScreen;
+                  setIsFullScreen(nextState);
+                  if (nextState) {
+                    setIsSearchExpanded(false);
+                    setShowSearchResults(false);
+                  }
+                }}
+                style={[
+                  styles.navBtn,
+                  {
+                    backgroundColor: isFullScreen ? colors.tintLight : colors.glassInput,
+                    borderColor: isFullScreen ? colors.tint : colors.border,
+                    marginLeft: 6,
+                  },
+                ]}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons
+                  name={isFullScreen ? 'contract' : 'book-outline'}
+                  size={16}
+                  color={isFullScreen ? colors.tint : colors.text}
+                />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
 
-        {/* Top Search Bar */}
-        <View style={styles.topSearchContainer}>
-          <View
-            style={[
-              styles.topSearchInputWrapper,
-              {
-                backgroundColor: colors.glassInput,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <Ionicons name="search" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
-            <TextInput
-              style={[styles.topSearchInput, { color: colors.text }]}
-              placeholder={version === 'CEB' ? 'Pangitaa (Juan 3:16, gugma)...' : 'Search (John 3:16, love)...'}
-              placeholderTextColor={colors.textTertiary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {isSearching ? (
-              <ActivityIndicator size="small" color={colors.tint} style={{ marginLeft: 6 }} />
-            ) : searchQuery.length > 0 ? (
-              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close-circle" size={17} color={colors.textTertiary} />
-              </TouchableOpacity>
-            ) : null}
+        {/* Full-Page Mode Banner Notification / Exit Bar */}
+        {isFullScreen ? (
+          <View style={[styles.fullPageBanner, { backgroundColor: colors.tintLight, borderTopColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="sparkles" size={13} color={colors.tint} style={{ marginRight: 6 }} />
+              <Text style={[styles.fullPageBannerText, { color: colors.tint }]}>
+                Full Page Reading Mode
+              </Text>
+            </View>
+            {/* <TouchableOpacity onPress={() => setIsFullScreen(false)} style={styles.exitFullPageBtn}>
+              <Text style={[styles.exitFullPageBtnText, { color: colors.tint }]}>Exit Full Page ✕</Text>
+            </TouchableOpacity> */}
           </View>
-        </View>
+        ) : isSearchExpanded ? (
+          /* Expandable Top Search Bar (Only shown when search icon is clicked) */
+          <View style={styles.topSearchContainer}>
+            <View
+              style={[
+                styles.topSearchInputWrapper,
+                {
+                  backgroundColor: colors.glassInput,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Ionicons name="search" size={16} color={colors.tint} style={{ marginRight: 8 }} />
+              <TextInput
+                style={[styles.topSearchInput, { color: colors.text }]}
+                placeholder={version === 'CEB' ? 'Pangitaa (Juan 3:16, gugma)...' : 'Search (John 3:16, love)...'}
+                placeholderTextColor={colors.textTertiary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                returnKeyType="search"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus={true}
+              />
+              {isSearching ? (
+                <ActivityIndicator size="small" color={colors.tint} style={{ marginLeft: 6 }} />
+              ) : searchQuery.length > 0 ? (
+                <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={17} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => setIsSearchExpanded(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        ) : null}
 
         {/* Search Results Dropdown (Under top search bar) */}
         {showSearchResults && (
@@ -353,6 +413,7 @@ export default function EBibleScreen() {
               verse={item}
               fontSize={fontSize}
               isBookmarked={bookmarks.has(item.verse)}
+              isFullScreen={isFullScreen}
               onToggleBookmark={toggleBookmark}
               onAddNote={handleAddNoteForVerse}
               onPressVerse={setReadingVerse}
@@ -983,5 +1044,27 @@ const styles = StyleSheet.create({
   versionOptionDesc: {
     fontSize: 12,
     marginTop: 2,
+  },
+  fullPageBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  fullPageBannerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  exitFullPageBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  exitFullPageBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
 });

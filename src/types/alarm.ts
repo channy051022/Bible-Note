@@ -22,4 +22,5 @@ export interface SpiritualAlarm {
   ringtoneId?: string;
   customAudioUri?: string;
   customAudioName?: string;
+  durationSeconds?: number; // 1 to 60 seconds
 }

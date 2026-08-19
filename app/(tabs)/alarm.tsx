@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as DocumentPicker from 'expo-document-picker';
@@ -21,7 +22,8 @@ import { BUILT_IN_RINGTONES, SoundService } from '../../src/services/soundServic
 import { getTodayVerseRef } from '../../src/constants/VerseOfTheDay';
 import { BibleRepo } from '../../src/db/bibleRepo';
 import { getItem, StorageKeys } from '../../src/utils/storage';
-import { BibleVersion } from '../../src/types/bible';
+import { BibleVersion, Verse } from '../../src/types/bible';
+import { BIBLE_BOOKS } from '../../src/constants/BibleBooks';
 
 const SCRIPTURE_PRESETS = [
   {
@@ -29,9 +31,18 @@ const SCRIPTURE_PRESETS = [
     name: '🌟 Daily Verse of the Day (Auto)',
     citation: 'Daily Scripture',
     text: 'God\'s fresh Word for your day.',
-    bookId: 43,
-    chapter: 3,
-    verse: 16,
+  },
+  {
+    id: 'bible_picker',
+    name: '📖 Choose Any Verse from the Bible',
+    citation: 'Bible Scripture',
+    text: 'Select any Book, Chapter, and Verse from the Holy Scriptures.',
+  },
+  {
+    id: 'custom',
+    name: '✍️ Custom Scripture Text (Type Your Own)',
+    citation: 'Custom Scripture',
+    text: 'Type or paste your personal scripture and devotion note.',
   },
   {
     id: 'psalm23',
@@ -114,10 +125,46 @@ export default function AlarmScreen() {
   const [alarmLabel, setAlarmLabel] = useState<string>('Morning Devotion');
   const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('daily');
+  const [customVerseCitation, setCustomVerseCitation] = useState<string>('John 3:16');
+  const [customVerseText, setCustomVerseText] = useState<string>(
+    'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'
+  );
+  const [alarmDurationSeconds, setAlarmDurationSeconds] = useState<number>(30);
   const [selectedRingtoneId, setSelectedRingtoneId] = useState<string>('chimes');
   const [customAudioUri, setCustomAudioUri] = useState<string | undefined>(undefined);
   const [customAudioName, setCustomAudioName] = useState<string | undefined>(undefined);
   const [previewingRingtoneId, setPreviewingRingtoneId] = useState<string | null>(null);
+
+  // Interactive Bible Scripture Picker state inside Alarm modal
+  const [pickerBookId, setPickerBookId] = useState<number>(43); // John
+  const [pickerChapter, setPickerChapter] = useState<number>(3);
+  const [pickerVerse, setPickerVerse] = useState<number>(16);
+  const [pickerVersesList, setPickerVersesList] = useState<Verse[]>([]);
+  const [pickerLoading, setPickerLoading] = useState<boolean>(false);
+
+  // Load verses whenever Bible picker selection changes
+  useEffect(() => {
+    async function loadPickerVerses() {
+      if (selectedPresetId !== 'bible_picker') return;
+      setPickerLoading(true);
+      try {
+        const v = getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
+        const list = await BibleRepo.getChapterVerses(db, pickerBookId, pickerChapter, v);
+        setPickerVersesList(list);
+        const activeVerseObj = list.find((item) => item.verse === pickerVerse) || list[0];
+        const book = BIBLE_BOOKS.find((b) => b.id === pickerBookId);
+        if (activeVerseObj && book) {
+          setCustomVerseCitation(`${book.name} ${pickerChapter}:${activeVerseObj.verse}`);
+          setCustomVerseText(activeVerseObj.text);
+        }
+      } catch (e) {
+        console.warn('Error loading verses for alarm picker:', e);
+      } finally {
+        setPickerLoading(false);
+      }
+    }
+    loadPickerVerses();
+  }, [selectedPresetId, pickerBookId, pickerChapter, pickerVerse, db]);
 
   // Load alarms on mount
   useEffect(() => {
@@ -227,10 +274,23 @@ export default function AlarmScreen() {
       setSelectedPeriod(isPM ? 'PM' : 'AM');
       setAlarmLabel(alarmToEdit.label);
       setSelectedDays(alarmToEdit.days || [0, 1, 2, 3, 4, 5, 6]);
-      setSelectedPresetId(alarmToEdit.verseSource);
+      setSelectedPresetId(
+        alarmToEdit.verseSource === 'custom' && alarmToEdit.bookId ? 'bible_picker' : alarmToEdit.verseSource
+      );
       setSelectedRingtoneId(alarmToEdit.ringtoneId || 'chimes');
       setCustomAudioUri(alarmToEdit.customAudioUri);
       setCustomAudioName(alarmToEdit.customAudioName);
+      setCustomVerseCitation(alarmToEdit.customCitation || 'John 3:16');
+      setCustomVerseText(
+        alarmToEdit.customText ||
+          'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'
+      );
+      if (alarmToEdit.bookId) {
+        setPickerBookId(alarmToEdit.bookId);
+        setPickerChapter(alarmToEdit.chapter || 1);
+        setPickerVerse(alarmToEdit.verse || 1);
+      }
+      setAlarmDurationSeconds(alarmToEdit.durationSeconds || 30);
     } else {
       setEditingAlarmId(null);
       setSelectedHour(7);
@@ -242,6 +302,14 @@ export default function AlarmScreen() {
       setSelectedRingtoneId('chimes');
       setCustomAudioUri(undefined);
       setCustomAudioName(undefined);
+      setCustomVerseCitation('John 3:16');
+      setCustomVerseText(
+        'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'
+      );
+      setPickerBookId(43);
+      setPickerChapter(3);
+      setPickerVerse(16);
+      setAlarmDurationSeconds(30);
     }
     setModalVisible(true);
   };
@@ -255,6 +323,18 @@ export default function AlarmScreen() {
     if (selectedPeriod === 'PM') hour24 += 12;
 
     const preset = SCRIPTURE_PRESETS.find((p) => p.id === selectedPresetId) || SCRIPTURE_PRESETS[0];
+    const isCustomOrPicker = selectedPresetId === 'custom' || selectedPresetId === 'bible_picker';
+    const finalCitation = isCustomOrPicker
+      ? customVerseCitation.trim() || 'Custom Scripture'
+      : preset.id === 'daily'
+      ? undefined
+      : preset.citation;
+
+    const finalText = isCustomOrPicker
+      ? customVerseText.trim() || 'The Lord is my shepherd; I shall not want.'
+      : preset.id === 'daily'
+      ? undefined
+      : preset.text;
 
     const newAlarm: SpiritualAlarm = {
       id: editingAlarmId || `alarm-${Date.now()}`,
@@ -263,15 +343,16 @@ export default function AlarmScreen() {
       label: alarmLabel.trim() || 'Spiritual Alarm',
       days: selectedDays,
       isEnabled: true,
-      verseSource: preset.id as any,
-      customCitation: preset.id === 'daily' ? undefined : preset.citation,
-      customText: preset.id === 'daily' ? undefined : preset.text,
-      bookId: preset.bookId,
-      chapter: preset.chapter,
-      verse: preset.verse,
+      verseSource: isCustomOrPicker ? 'custom' : (preset.id as any),
+      customCitation: finalCitation,
+      customText: finalText,
+      bookId: selectedPresetId === 'bible_picker' ? pickerBookId : preset.bookId,
+      chapter: selectedPresetId === 'bible_picker' ? pickerChapter : preset.chapter,
+      verse: selectedPresetId === 'bible_picker' ? pickerVerse : preset.verse,
       ringtoneId: selectedRingtoneId,
       customAudioUri: selectedRingtoneId === 'custom' ? customAudioUri : undefined,
       customAudioName: selectedRingtoneId === 'custom' ? customAudioName : undefined,
+      durationSeconds: Math.min(60, Math.max(1, alarmDurationSeconds)),
     };
 
     const updated = await AlarmService.saveAlarm(newAlarm);
@@ -317,85 +398,103 @@ export default function AlarmScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Alarms Cards */}
-        {alarms.map((alarm) => {
-          const timeFormatted = AlarmService.formatTime(alarm.hour, alarm.minute);
-          const daysFormatted = AlarmService.formatDays(alarm.days);
-          const builtIn = BUILT_IN_RINGTONES.find((r) => r.id === alarm.ringtoneId);
-          const ringtoneName = alarm.customAudioName ? `🎵 ${alarm.customAudioName}` : builtIn?.title || '🕊️ Heavenly Chimes';
-
-          return (
+        {/* Alarms Cards or Empty State */}
+        {alarms.length === 0 ? (
+          <View style={[styles.emptyAlarmsCard, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
+            <Ionicons name="alarm-outline" size={44} color={colors.tint} style={{ marginBottom: 10 }} />
+            <Text style={[styles.emptyAlarmsTitle, { color: colors.text }]}>No Spiritual Alarms Set</Text>
+            <Text style={[styles.emptyAlarmsSubtitle, { color: colors.textSecondary }]}>
+              Create your personal wake-up alarm with customized Scripture readings, devotion, and chimes.
+            </Text>
             <TouchableOpacity
-              key={alarm.id}
-              style={[
-                styles.alarmCard,
-                {
-                  backgroundColor: colors.glassCard,
-                  borderColor: alarm.isEnabled ? colors.tint : colors.border,
-                  opacity: alarm.isEnabled ? 1 : 0.65,
-                },
-              ]}
-              onPress={() => openAddModal(alarm)}
+              style={[styles.emptyAddBtn, { backgroundColor: colors.tint }]}
+              onPress={() => openAddModal()}
               activeOpacity={0.8}
             >
-              {/* Top Row: Time & Switch */}
-              <View style={styles.cardTopRow}>
-                <View>
-                  <Text style={[styles.alarmTimeText, { color: colors.text }]}>{timeFormatted}</Text>
-                  <Text style={[styles.alarmLabelText, { color: colors.tint }]}>{alarm.label}</Text>
-                </View>
-                <Switch
-                  value={alarm.isEnabled}
-                  onValueChange={(val) => handleToggleAlarm(alarm.id, val)}
-                  trackColor={{ false: colors.border, true: colors.tint }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
+              <Ionicons name="add" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.emptyAddBtnText}>Add Spiritual Alarm</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          alarms.map((alarm) => {
+            const timeFormatted = AlarmService.formatTime(alarm.hour, alarm.minute);
+            const daysFormatted = AlarmService.formatDays(alarm.days);
+            const builtIn = BUILT_IN_RINGTONES.find((r) => r.id === alarm.ringtoneId);
+            const ringtoneName = alarm.customAudioName ? `🎵 ${alarm.customAudioName}` : builtIn?.title || '🕊️ Heavenly Chimes';
 
-              {/* Middle: Days, Scripture & Ringtone */}
-              <View style={styles.cardDetailsRow}>
-                <View style={styles.detailItem}>
-                  <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} style={{ marginRight: 5 }} />
-                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>{daysFormatted}</Text>
+            return (
+              <TouchableOpacity
+                key={alarm.id}
+                style={[
+                  styles.alarmCard,
+                  {
+                    backgroundColor: colors.glassCard,
+                    borderColor: alarm.isEnabled ? colors.tint : colors.border,
+                    opacity: alarm.isEnabled ? 1 : 0.65,
+                  },
+                ]}
+                onPress={() => openAddModal(alarm)}
+                activeOpacity={0.8}
+              >
+                {/* Top Row: Time & Switch */}
+                <View style={styles.cardTopRow}>
+                  <View>
+                    <Text style={[styles.alarmTimeText, { color: colors.text }]}>{timeFormatted}</Text>
+                    <Text style={[styles.alarmLabelText, { color: colors.tint }]}>{alarm.label}</Text>
+                  </View>
+                  <Switch
+                    value={alarm.isEnabled}
+                    onValueChange={(val) => handleToggleAlarm(alarm.id, val)}
+                    trackColor={{ false: colors.border, true: colors.tint }}
+                    thumbColor="#FFFFFF"
+                  />
                 </View>
-                <View style={styles.detailItem}>
-                  <Ionicons name="book-outline" size={14} color={colors.textSecondary} style={{ marginRight: 5 }} />
-                  <Text style={[styles.detailText, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {alarm.verseSource === 'daily' ? 'Daily Scripture' : alarm.customCitation || 'Psalm 23:1'}
+
+                {/* Middle: Days, Scripture & Ringtone */}
+                <View style={styles.cardDetailsRow}>
+                  <View style={styles.detailItem}>
+                    <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} style={{ marginRight: 5 }} />
+                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>{daysFormatted}</Text>
+                  </View>
+                  <View style={styles.detailItem}>
+                    <Ionicons name="book-outline" size={14} color={colors.textSecondary} style={{ marginRight: 5 }} />
+                    <Text style={[styles.detailText, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {alarm.verseSource === 'daily' ? 'Daily Scripture' : alarm.customCitation || 'Psalm 23:1'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Ringtone badge row */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                  <Ionicons name="musical-notes-outline" size={13} color={colors.tint} style={{ marginRight: 5 }} />
+                  <Text style={{ fontSize: 12, color: colors.tint, fontWeight: '600' }} numberOfLines={1}>
+                    {ringtoneName}
                   </Text>
                 </View>
-              </View>
 
-              {/* Ringtone badge row */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                <Ionicons name="musical-notes-outline" size={13} color={colors.tint} style={{ marginRight: 5 }} />
-                <Text style={{ fontSize: 12, color: colors.tint, fontWeight: '600' }} numberOfLines={1}>
-                  {ringtoneName}
-                </Text>
-              </View>
+                {/* Bottom Row: Actions */}
+                <View style={[styles.cardActionsRow, { borderTopColor: colors.border }]}>
+                  <TouchableOpacity
+                    style={[styles.testAlarmBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    onPress={() => handleTestAlarm(alarm)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="play" size={13} color={colors.tint} style={{ marginRight: 5 }} />
+                    <Text style={[styles.testAlarmBtnText, { color: colors.tint }]}>Test / Preview Ringing</Text>
+                  </TouchableOpacity>
 
-              {/* Bottom Row: Actions */}
-              <View style={[styles.cardActionsRow, { borderTopColor: colors.border }]}>
-                <TouchableOpacity
-                  style={[styles.testAlarmBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                  onPress={() => handleTestAlarm(alarm)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="play" size={13} color={colors.tint} style={{ marginRight: 5 }} />
-                  <Text style={[styles.testAlarmBtnText, { color: colors.tint }]}>Test / Preview Ringing</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.deleteAlarmBtn}
-                  onPress={() => handleDeleteAlarm(alarm.id)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#FF3B30" />
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+                  <TouchableOpacity
+                    style={styles.deleteAlarmBtn}
+                    onPress={() => handleDeleteAlarm(alarm.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#FF3B30" />
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
       </ScrollView>
 
       {/* Add / Edit Alarm Modal */}
@@ -434,9 +533,9 @@ export default function AlarmScreen() {
 
                 <Text style={[styles.timeColon, { color: colors.text }]}>:</Text>
 
-                {/* Minute */}
+                {/* Minute (00 to 59, 1-by-1) */}
                 <ScrollView style={styles.pickerColumn} showsVerticalScrollIndicator={false}>
-                  {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                  {Array.from({ length: 60 }, (_, i) => i).map((m) => (
                     <TouchableOpacity
                       key={m}
                       style={[
@@ -471,7 +570,62 @@ export default function AlarmScreen() {
                 </View>
               </View>
 
-              {/* 2. Label Input */}
+              {/* 2. Ring Duration (1 to 60 seconds) */}
+              <View style={{ marginTop: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginBottom: 0 }]}>
+                    ALARM DURATION (1–60 SECONDS)
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.tint }}>
+                    {alarmDurationSeconds} sec
+                  </Text>
+                </View>
+
+                <View style={styles.durationSelectorRow}>
+                  <TouchableOpacity
+                    onPress={() => setAlarmDurationSeconds((prev) => Math.max(1, prev - 1))}
+                    style={[styles.durationStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="remove" size={16} color={colors.text} />
+                  </TouchableOpacity>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.durationScroll}>
+                    {[1, 5, 10, 15, 20, 30, 45, 60].map((sec) => (
+                      <TouchableOpacity
+                        key={sec}
+                        onPress={() => setAlarmDurationSeconds(sec)}
+                        style={[
+                          styles.durationQuickPill,
+                          {
+                            backgroundColor: alarmDurationSeconds === sec ? colors.tint : colors.glassInput,
+                            borderColor: alarmDurationSeconds === sec ? colors.tint : colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.durationQuickPillText,
+                            { color: alarmDurationSeconds === sec ? '#FFFFFF' : colors.text },
+                          ]}
+                        >
+                          {sec}s
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  <TouchableOpacity
+                    onPress={() => setAlarmDurationSeconds((prev) => Math.min(60, prev + 1))}
+                    style={[styles.durationStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="add" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* 3. Label Input */}
               <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 16 }]}>ALARM LABEL</Text>
               <TextInput
                 style={[styles.modalInput, { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border }]}
@@ -481,7 +635,7 @@ export default function AlarmScreen() {
                 placeholderTextColor={colors.textTertiary}
               />
 
-              {/* 3. Repeat Days */}
+              {/* 4. Repeat Days */}
               <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 16 }]}>REPEAT DAYS</Text>
               <View style={styles.daysRow}>
                 {DAYS_OF_WEEK.map((d) => {
@@ -506,7 +660,7 @@ export default function AlarmScreen() {
                 })}
               </View>
 
-              {/* 4. Scripture Preset */}
+              {/* 5. Scripture Preset & Custom Verse */}
               <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 16 }]}>
                 SCRIPTURE GREETING
               </Text>
@@ -541,6 +695,169 @@ export default function AlarmScreen() {
                   </TouchableOpacity>
                 );
               })}
+
+              {/* Interactive Bible Passage Picker (when 'bible_picker' is selected) */}
+              {selectedPresetId === 'bible_picker' && (
+                <View style={[styles.biblePickerContainer, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
+                  {/* 1. Book Picker */}
+                  <Text style={[styles.customFieldLabel, { color: colors.textSecondary }]}>1. SELECT BOOK</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScrollPills}>
+                    {BIBLE_BOOKS.map((b) => {
+                      const isSelected = pickerBookId === b.id;
+                      return (
+                        <TouchableOpacity
+                          key={b.id}
+                          onPress={() => {
+                            setPickerBookId(b.id);
+                            setPickerChapter(1);
+                            setPickerVerse(1);
+                          }}
+                          style={[
+                            styles.bookPill,
+                            {
+                              backgroundColor: isSelected ? colors.tint : colors.glassInput,
+                              borderColor: isSelected ? colors.tint : colors.border,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.bookPillText, { color: isSelected ? '#FFFFFF' : colors.text }]}>
+                            {b.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* 2. Chapter Picker */}
+                  {(() => {
+                    const activeBook = BIBLE_BOOKS.find((b) => b.id === pickerBookId) || BIBLE_BOOKS[0];
+                    const chapterCount = activeBook.chapters_count || 1;
+                    return (
+                      <>
+                        <Text style={[styles.customFieldLabel, { color: colors.textSecondary, marginTop: 10 }]}>
+                          2. SELECT CHAPTER (1 to {chapterCount})
+                        </Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScrollPills}>
+                          {Array.from({ length: chapterCount }, (_, i) => i + 1).map((ch) => {
+                            const isSelected = pickerChapter === ch;
+                            return (
+                              <TouchableOpacity
+                                key={ch}
+                                onPress={() => {
+                                  setPickerChapter(ch);
+                                  setPickerVerse(1);
+                                }}
+                                style={[
+                                  styles.numberPill,
+                                  {
+                                    backgroundColor: isSelected ? colors.tint : colors.glassInput,
+                                    borderColor: isSelected ? colors.tint : colors.border,
+                                  },
+                                ]}
+                              >
+                                <Text style={[styles.numberPillText, { color: isSelected ? '#FFFFFF' : colors.text }]}>
+                                  {ch}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      </>
+                    );
+                  })()}
+
+                  {/* 3. Verse Picker */}
+                  <Text style={[styles.customFieldLabel, { color: colors.textSecondary, marginTop: 10 }]}>
+                    3. SELECT VERSE ({pickerVersesList.length} Verses)
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScrollPills}>
+                    {pickerVersesList.length > 0
+                      ? pickerVersesList.map((v) => {
+                          const isSelected = pickerVerse === v.verse;
+                          return (
+                            <TouchableOpacity
+                              key={v.verse}
+                              onPress={() => setPickerVerse(v.verse)}
+                              style={[
+                                styles.numberPill,
+                                {
+                                  backgroundColor: isSelected ? colors.tint : colors.glassInput,
+                                  borderColor: isSelected ? colors.tint : colors.border,
+                                },
+                              ]}
+                            >
+                              <Text style={[styles.numberPillText, { color: isSelected ? '#FFFFFF' : colors.text }]}>
+                                {v.verse}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })
+                      : Array.from({ length: 30 }, (_, i) => i + 1).map((v) => (
+                          <TouchableOpacity
+                            key={v}
+                            onPress={() => setPickerVerse(v)}
+                            style={[
+                              styles.numberPill,
+                              {
+                                backgroundColor: pickerVerse === v ? colors.tint : colors.glassInput,
+                                borderColor: pickerVerse === v ? colors.tint : colors.border,
+                              },
+                            ]}
+                          >
+                            <Text style={[styles.numberPillText, { color: pickerVerse === v ? '#FFFFFF' : colors.text }]}>
+                              {v}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                  </ScrollView>
+
+                  {/* 4. Live Scripture Card Preview */}
+                  <View style={[styles.pickedVersePreviewCard, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                      <Ionicons name="book" size={14} color={colors.tint} style={{ marginRight: 6 }} />
+                      <Text style={[styles.pickedVerseCitation, { color: colors.tint }]}>
+                        {customVerseCitation}
+                      </Text>
+                    </View>
+                    {pickerLoading ? (
+                      <ActivityIndicator size="small" color={colors.tint} />
+                    ) : (
+                      <Text style={[styles.pickedVerseText, { color: colors.text }]}>
+                        "{customVerseText}"
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* Custom Scripture Input (Visible when 'custom' is selected) */}
+              {selectedPresetId === 'custom' && (
+                <View style={[styles.customVerseContainer, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
+                  <Text style={[styles.customFieldLabel, { color: colors.textSecondary }]}>SCRIPTURE CITATION</Text>
+                  <TextInput
+                    style={[styles.modalInput, { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border, marginBottom: 10 }]}
+                    value={customVerseCitation}
+                    onChangeText={setCustomVerseCitation}
+                    placeholder="e.g. Romans 8:28, Philippians 4:13..."
+                    placeholderTextColor={colors.textTertiary}
+                  />
+
+                  <Text style={[styles.customFieldLabel, { color: colors.textSecondary }]}>CUSTOM VERSE TEXT</Text>
+                  <TextInput
+                    style={[
+                      styles.modalInput,
+                      styles.customVerseTextInput,
+                      { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border },
+                    ]}
+                    value={customVerseText}
+                    onChangeText={setCustomVerseText}
+                    placeholder="Type your personal Scripture verse text here..."
+                    placeholderTextColor={colors.textTertiary}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+              )}
 
               {/* 5. Ringtone & Music Selection */}
               <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 16 }]}>
@@ -985,5 +1302,131 @@ const styles = StyleSheet.create({
   importMusicBtnText: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  emptyAlarmsCard: {
+    padding: 28,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 14,
+  },
+  emptyAlarmsTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  emptyAlarmsSubtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 12,
+  },
+  emptyAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  emptyAddBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  durationSelectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  durationStepBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  durationScroll: {
+    marginHorizontal: 8,
+  },
+  durationQuickPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginRight: 6,
+  },
+  durationQuickPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  customVerseContainer: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  customFieldLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  customVerseTextInput: {
+    height: 80,
+    textAlignVertical: 'top',
+    paddingTop: 10,
+  },
+  biblePickerContainer: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  pickerScrollPills: {
+    flexDirection: 'row',
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  bookPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginRight: 6,
+  },
+  bookPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  numberPill: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  numberPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  pickedVersePreviewCard: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  pickedVerseCitation: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  pickedVerseText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontStyle: 'italic',
   },
 });

@@ -306,7 +306,7 @@ export default function SettingsScreen() {
       <View style={[styles.card, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
         <View style={styles.infoRow}>
           <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Available Translations</Text>
-          <Text style={[styles.infoValue, { color: colors.text }]}>KJV 1769 & Cebuano Pinadayag</Text>
+          <Text style={[styles.infoValue, { color: colors.text }]}>KJV & Ceb</Text>
         </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <View style={styles.infoRow}>
@@ -374,7 +374,7 @@ export default function SettingsScreen() {
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <View style={styles.infoRow}>
           <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Version</Text>
-          <Text style={[styles.infoValue, { color: colors.text }]}>1.0.0 (Expo SDK 54)</Text>
+          <Text style={[styles.infoValue, { color: colors.text }]}>1.0.0</Text>
         </View>
       </View>
     </ScrollView>

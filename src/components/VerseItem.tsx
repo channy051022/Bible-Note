@@ -8,6 +8,7 @@ interface VerseItemProps {
   verse: Verse;
   isBookmarked: boolean;
   fontSize?: number;
+  isFullScreen?: boolean;
   onToggleBookmark: (verseNumber: number) => void;
   onAddNote?: (verse: Verse) => void;
   onPressVerse?: (verse: Verse) => void;
@@ -17,6 +18,7 @@ export const VerseItem: React.FC<VerseItemProps> = ({
   verse,
   isBookmarked,
   fontSize = 18,
+  isFullScreen = false,
   onToggleBookmark,
   onAddNote,
   onPressVerse,
@@ -24,9 +26,9 @@ export const VerseItem: React.FC<VerseItemProps> = ({
   const { colors } = useTheme();
 
   return (
-    <View style={[styles.container, { borderBottomColor: colors.border }]}>
+    <View style={[styles.container, { borderBottomColor: colors.border }, isFullScreen && styles.fullPageContainer]}>
       <TouchableOpacity
-        style={styles.textContainer}
+        style={[styles.textContainer, isFullScreen && { paddingRight: 0 }]}
         onPress={() => onPressVerse?.(verse)}
         activeOpacity={0.65}
       >
@@ -49,32 +51,34 @@ export const VerseItem: React.FC<VerseItemProps> = ({
         </Text>
       </TouchableOpacity>
 
-      <View style={styles.actions}>
-        <TouchableOpacity
-          onPress={() => onToggleBookmark(verse.verse)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={[
-            styles.actionBtn,
-            isBookmarked && { backgroundColor: colors.glassHighlight, borderRadius: 8, padding: 3 },
-          ]}
-        >
-          <Ionicons
-            name={isBookmarked ? 'bookmark' : 'bookmark-outline'}
-            size={18}
-            color={isBookmarked ? colors.gold : colors.textTertiary}
-          />
-        </TouchableOpacity>
-
-        {onAddNote && (
+      {!isFullScreen && (
+        <View style={styles.actions}>
           <TouchableOpacity
-            onPress={() => onAddNote(verse)}
+            onPress={() => onToggleBookmark(verse.verse)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.actionBtn}
+            style={[
+              styles.actionBtn,
+              isBookmarked && { backgroundColor: colors.glassHighlight, borderRadius: 8, padding: 3 },
+            ]}
           >
-            <Ionicons name="create-outline" size={18} color={colors.textTertiary} />
+            <Ionicons
+              name={isBookmarked ? 'bookmark' : 'bookmark-outline'}
+              size={18}
+              color={isBookmarked ? colors.gold : colors.textTertiary}
+            />
           </TouchableOpacity>
-        )}
-      </View>
+
+          {onAddNote && (
+            <TouchableOpacity
+              onPress={() => onAddNote(verse)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.actionBtn}
+            >
+              <Ionicons name="create-outline" size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 };
@@ -87,6 +91,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
+  },
+  fullPageContainer: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
   },
   textContainer: {
     flex: 1,
