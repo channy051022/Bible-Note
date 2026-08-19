@@ -65,6 +65,7 @@ export default function TabLayout() {
         tabBarItemStyle: {
           paddingVertical: 2,
         },
+        headerTitleAlign: 'center',
         headerStyle: {
           backgroundColor: colors.background,
         },

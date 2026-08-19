@@ -35,27 +35,36 @@ export const NotificationService = {
         return false;
       }
 
-      // 2. Clear old daily verse schedules
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      // 2. Setup Android daily verse channel
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('daily_verse_channel', {
+          name: 'Daily Verse of the Day',
+          importance: Notifications.AndroidImportance.DEFAULT,
+          sound: 'default',
+          enableLights: false,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        });
+      }
 
       // 3. Compute today's verse citation
       const ref = getTodayVerseRef();
       const book = BIBLE_BOOKS.find((b) => b.id === ref.bookId);
       const citation = `${book?.name || 'Scripture'} ${ref.chapter}:${ref.verse}`;
 
-      // 4. Schedule recurring daily notification for phone lockscreen at 8:00 AM
+      // 4. Schedule or replace recurring daily notification for phone lockscreen at 8:00 AM
       await Notifications.scheduleNotificationAsync({
+        identifier: 'daily-verse-of-day-notification',
         content: {
           title: `✨ Verse of the Day • ${citation}`,
           body: `May your heart be refreshed by God's Word today. Tap to read ${citation}.`,
           sound: true,
-          priority: Notifications.AndroidNotificationPriority.HIGH,
+          priority: Notifications.AndroidNotificationPriority.DEFAULT,
           data: { bookId: ref.bookId, chapter: ref.chapter, verse: ref.verse },
         },
         trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
           hour,
           minute,
-          repeats: true,
         } as any,
       });
 

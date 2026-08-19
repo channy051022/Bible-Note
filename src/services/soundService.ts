@@ -5,18 +5,37 @@ let previewSoundObject: Audio.Sound | null = null;
 
 const SOUND_ASSETS: Record<string, any> = {
   chimes: require('../../assets/spiritual_chimes.wav'),
-  harp: require('../../assets/morning_harp.wav'),
-  piano: require('../../assets/peaceful_piano.wav'),
+  sunrise_bell: require('../../assets/radiant_sunrise_bell.wav'),
   fanfare: require('../../assets/gospel_fanfare.wav'),
   cathedral: require('../../assets/cathedral_bells.wav'),
+  harp: require('../../assets/morning_harp.wav'),
+  piano: require('../../assets/peaceful_piano.wav'),
 };
 
 export const BUILT_IN_RINGTONES = [
   {
     id: 'chimes',
-    title: '🕊️ Heavenly Chimes',
-    description: 'Peaceful cathedral bell arpeggio',
+    title: '🔔 Energetic Wake Chimes',
+    description: 'Bright ascending morning bell melody (Ideal Wake-Up)',
     assetKey: 'chimes' as const,
+  },
+  {
+    id: 'sunrise_bell',
+    title: '☀️ Radiant Sunrise Bells',
+    description: 'Vibrant harmonic morning alarm pulses',
+    assetKey: 'sunrise_bell' as const,
+  },
+  {
+    id: 'fanfare',
+    title: '🎺 Joyful Reveille Trumpet',
+    description: 'Triumphant morning awakening fanfare',
+    assetKey: 'fanfare' as const,
+  },
+  {
+    id: 'cathedral',
+    title: '⛪ Cathedral Tower Bells',
+    description: 'Deep resonant church tower chimes',
+    assetKey: 'cathedral' as const,
   },
   {
     id: 'harp',
@@ -27,20 +46,8 @@ export const BUILT_IN_RINGTONES = [
   {
     id: 'piano',
     title: '🎹 Peaceful Piano Hymn',
-    description: 'Soft, serene piano melody',
+    description: 'Soft serene acoustic piano melody',
     assetKey: 'piano' as const,
-  },
-  {
-    id: 'fanfare',
-    title: '🎺 Gospel Fanfare',
-    description: 'Joyful spiritual awakening fanfare',
-    assetKey: 'fanfare' as const,
-  },
-  {
-    id: 'cathedral',
-    title: '🔔 Cathedral Tower Bells',
-    description: 'Deep resonant church tower chimes',
-    assetKey: 'cathedral' as const,
   },
 ];
 

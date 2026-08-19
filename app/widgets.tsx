@@ -21,7 +21,7 @@ import { BIBLE_BOOKS } from '../src/constants/BibleBooks';
 import { WidgetBridgeService } from '../src/services/widgetBridgeService';
 
 type WidgetSize = 'small' | 'medium' | 'large';
-type WidgetTheme = 'glass' | 'gold' | 'midnight' | 'emerald';
+type WidgetTheme = 'glass' | 'pure_glass' | 'gold' | 'midnight' | 'emerald';
 type WidgetSource = 'daily' | 'bookmark' | 'custom';
 
 export default function VerseWidgetsScreen() {
@@ -103,6 +103,14 @@ export default function VerseWidgetsScreen() {
   // Theme palettes
   const getThemePalette = () => {
     switch (widgetTheme) {
+      case 'pure_glass':
+        return {
+          bg: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.45)',
+          border: isDark ? 'rgba(255, 255, 255, 0.28)' : 'rgba(0, 0, 0, 0.18)',
+          text: colors.text,
+          accent: colors.tint,
+          badgeBg: 'rgba(255, 255, 255, 0.15)',
+        };
       case 'gold':
         return {
           bg: '#241904',
@@ -293,9 +301,10 @@ export default function VerseWidgetsScreen() {
         <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: 18 }]}>WIDGET THEME</Text>
         <View style={styles.pillsRow}>
           {[
-            { id: 'glass', label: 'Glassmorphic', color: colors.tint },
+            { id: 'glass', label: 'Frosted Glass', color: colors.tint },
+            { id: 'pure_glass', label: 'Pure Glass', color: '#60A5FA' },
             { id: 'gold', label: 'Sunrise Gold', color: '#E5A93C' },
-            { id: 'midnight', label: 'Midnight Blue', color: '#60A5FA' },
+            { id: 'midnight', label: 'Midnight Blue', color: '#818CF8' },
             { id: 'emerald', label: 'Emerald Olive', color: '#34D399' },
           ].map((item) => {
             const isSelected = widgetTheme === item.id;

@@ -8,6 +8,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DATABASE_NAME, copyDatabaseFileIfNotExists, initializeDatabase } from '../src/db/init';
 import { ThemeProvider, useTheme } from '../src/hooks/useTheme';
 import { NotificationService } from '../src/services/notificationService';
+import * as Notifications from 'expo-notifications';
+import { ActiveAlarmModal } from '../src/components/ActiveAlarmModal';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -37,12 +39,64 @@ function AppLoadingScreen() {
 
 function RootNavigationLayout() {
   const { isDark, colors } = useTheme();
+  const [activeAlarm, setActiveAlarm] = useState<{
+    visible: boolean;
+    timeString: string;
+    verseText: string;
+    citation: string;
+    bookId: number;
+    chapter: number;
+    ringtoneId?: string;
+    customAudioUri?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    // 1. Listen for incoming notification in foreground
+    const subReceived = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data;
+      if (data && data.isSpiritualAlarm) {
+        setActiveAlarm({
+          visible: true,
+          timeString: (data.timeString as string) || 'Spiritual Alarm',
+          verseText: (data.text as string) || 'The Lord is my shepherd; I shall not want.',
+          citation: (data.citation as string) || 'Psalm 23:1',
+          bookId: Number(data.bookId) || 19,
+          chapter: Number(data.chapter) || 23,
+          ringtoneId: data.ringtoneId as string,
+          customAudioUri: data.customAudioUri as string,
+        });
+      }
+    });
+
+    // 2. Listen for notification response / user tap on lock screen or banner
+    const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      if (data && data.isSpiritualAlarm) {
+        setActiveAlarm({
+          visible: true,
+          timeString: (data.timeString as string) || 'Spiritual Alarm',
+          verseText: (data.text as string) || 'The Lord is my shepherd; I shall not want.',
+          citation: (data.citation as string) || 'Psalm 23:1',
+          bookId: Number(data.bookId) || 19,
+          chapter: Number(data.chapter) || 23,
+          ringtoneId: data.ringtoneId as string,
+          customAudioUri: data.customAudioUri as string,
+        });
+      }
+    });
+
+    return () => {
+      subReceived.remove();
+      subResponse.remove();
+    };
+  }, []);
 
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
+          headerTitleAlign: 'center',
           headerStyle: {
             backgroundColor: colors.background,
           },
@@ -118,6 +172,15 @@ function RootNavigationLayout() {
         />
 
         <Stack.Screen
+          name="plans/create-custom"
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            title: 'Create Reading Plan',
+          }}
+        />
+
+        <Stack.Screen
           name="plan/new"
           options={{
             presentation: 'modal',
@@ -140,7 +203,7 @@ function RootNavigationLayout() {
           name="game/index"
           options={{
             headerShown: false,
-            title: 'Game Hub',
+            title: 'Bible Games Hub',
           }}
         />
 
@@ -156,7 +219,7 @@ function RootNavigationLayout() {
           name="game/books-sort"
           options={{
             headerShown: false,
-            title: 'Canonical Book Sorter',
+            title: 'Book Sorter',
           }}
         />
 
@@ -184,6 +247,21 @@ function RootNavigationLayout() {
           }}
         />
       </Stack>
+
+      {/* Global Full-Screen Spiritual Ringing Alarm Modal */}
+      {activeAlarm && (
+        <ActiveAlarmModal
+          visible={activeAlarm.visible}
+          onDismiss={() => setActiveAlarm(null)}
+          timeString={activeAlarm.timeString}
+          verseText={activeAlarm.verseText}
+          citation={activeAlarm.citation}
+          bookId={activeAlarm.bookId}
+          chapter={activeAlarm.chapter}
+          ringtoneId={activeAlarm.ringtoneId}
+          customAudioUri={activeAlarm.customAudioUri}
+        />
+      )}
     </>
   );
 }

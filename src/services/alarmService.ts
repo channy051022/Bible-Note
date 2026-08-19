@@ -76,9 +76,40 @@ export const AlarmService = {
     if (Platform.OS === 'web') return;
 
     try {
-      // Clear old alarm notifications
+      // 1. Request notification permissions if not already granted
+      const settings = await Notifications.getPermissionsAsync();
+      let granted = settings.granted || settings.status === 'granted';
+      if (!granted) {
+        const req = await Notifications.requestPermissionsAsync({
+          ios: {
+            allowAlert: true,
+            allowBadge: true,
+            allowSound: true,
+          },
+        });
+        granted = req.granted || req.status === 'granted';
+      }
+
+      // 2. Setup high-priority Android notification channel for alarms
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('spiritual_alarms_channel', {
+          name: 'Spiritual Alarms & Devotions',
+          description: 'Full-screen alarm notifications with scripture wake-up chimes',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 500, 500, 500, 500],
+          sound: 'default',
+          enableLights: true,
+          lightColor: '#E5A93C',
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          bypassDnd: true,
+          showBadge: true,
+        });
+      }
+
+      // 3. Cancel previously scheduled notifications
       await Notifications.cancelAllScheduledNotificationsAsync();
 
+      // 4. Schedule all active alarms
       for (const alarm of alarms) {
         if (!alarm.isEnabled) continue;
 
@@ -86,26 +117,31 @@ export const AlarmService = {
         const book = BIBLE_BOOKS.find((b) => b.id === (alarm.bookId || ref.bookId));
         const citation = alarm.customCitation || `${book?.name || 'Scripture'} ${ref.chapter}:${ref.verse}`;
         const timeFormatted = AlarmService.formatTime(alarm.hour, alarm.minute);
+        const verseBody = alarm.customText || 'The Lord is my shepherd; I shall not want.';
 
         await Notifications.scheduleNotificationAsync({
           content: {
             title: `🔔 ${timeFormatted} • ${alarm.label}`,
-            body: `✝️ ${citation}: "${alarm.customText || 'Tap to rise and read Scripture with God today.'}"`,
+            body: `✝️ ${citation}: "${verseBody}"`,
             sound: true,
             priority: Notifications.AndroidNotificationPriority.MAX,
+            categoryIdentifier: 'spiritual_alarm',
             data: {
               alarmId: alarm.id,
+              timeString: timeFormatted,
               citation,
-              text: alarm.customText || '',
+              text: verseBody,
               bookId: alarm.bookId || ref.bookId,
               chapter: alarm.chapter || ref.chapter,
+              ringtoneId: alarm.ringtoneId || 'chimes',
+              customAudioUri: alarm.customAudioUri,
               isSpiritualAlarm: true,
             },
           },
           trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour: alarm.hour,
             minute: alarm.minute,
-            repeats: true,
           } as any,
         });
       }

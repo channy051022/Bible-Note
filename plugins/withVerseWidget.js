@@ -66,10 +66,12 @@ const withVerseWidget = (config) => {
       const javaDir = path.join(platformRoot, 'app', 'src', 'main', 'java', 'com', 'biblenotes', 'app');
       const layoutDir = path.join(platformRoot, 'app', 'src', 'main', 'res', 'layout');
       const xmlDir = path.join(platformRoot, 'app', 'src', 'main', 'res', 'xml');
+      const drawableDir = path.join(platformRoot, 'app', 'src', 'main', 'res', 'drawable');
 
       fs.mkdirSync(javaDir, { recursive: true });
       fs.mkdirSync(layoutDir, { recursive: true });
       fs.mkdirSync(xmlDir, { recursive: true });
+      fs.mkdirSync(drawableDir, { recursive: true });
 
       // Copy files
       const ktSrc = path.join(widgetSrcDir, 'VerseWidgetProvider.kt');
@@ -85,6 +87,11 @@ const withVerseWidget = (config) => {
       const infoSrc = path.join(widgetSrcDir, 'verse_widget_info.xml');
       if (fs.existsSync(infoSrc)) {
         fs.copyFileSync(infoSrc, path.join(xmlDir, 'verse_widget_info.xml'));
+      }
+
+      const drawableSrc = path.join(widgetSrcDir, 'widget_glass_bg.xml');
+      if (fs.existsSync(drawableSrc)) {
+        fs.copyFileSync(drawableSrc, path.join(drawableDir, 'widget_glass_bg.xml'));
       }
 
       return config;

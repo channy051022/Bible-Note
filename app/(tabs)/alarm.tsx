@@ -358,6 +358,12 @@ export default function AlarmScreen() {
     const updated = await AlarmService.saveAlarm(newAlarm);
     setAlarms(updated);
     setModalVisible(false);
+
+    const formattedTime = AlarmService.formatTime(hour24, selectedMinute);
+    Alert.alert(
+      'Spiritual Alarm Saved! 🔔',
+      `Your alarm is set for ${formattedTime} (${AlarmService.formatDays(selectedDays)}).\n\nWhen the time arrives, your phone will ring and display God's Word on your screen!`
+    );
   };
 
   const toggleDay = (day: number) => {
@@ -474,14 +480,25 @@ export default function AlarmScreen() {
 
                 {/* Bottom Row: Actions */}
                 <View style={[styles.cardActionsRow, { borderTopColor: colors.border }]}>
-                  <TouchableOpacity
-                    style={[styles.testAlarmBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                    onPress={() => handleTestAlarm(alarm)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="play" size={13} color={colors.tint} style={{ marginRight: 5 }} />
-                    <Text style={[styles.testAlarmBtnText, { color: colors.tint }]}>Test / Preview Ringing</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TouchableOpacity
+                      style={[styles.testAlarmBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                      onPress={() => handleTestAlarm(alarm)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="play" size={13} color={colors.tint} style={{ marginRight: 5 }} />
+                      <Text style={[styles.testAlarmBtnText, { color: colors.tint }]}>Test Ringing</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.testAlarmBtn, { backgroundColor: colors.tintLight, borderColor: colors.tint }]}
+                      onPress={() => openAddModal(alarm)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="pencil" size={13} color={colors.tint} style={{ marginRight: 5 }} />
+                      <Text style={[styles.testAlarmBtnText, { color: colors.tint }]}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
 
                   <TouchableOpacity
                     style={styles.deleteAlarmBtn}
@@ -503,71 +520,185 @@ export default function AlarmScreen() {
           <View style={[styles.modalSheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
             {/* Header */}
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Configure Spiritual Alarm</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {editingAlarmId ? '✏️ Edit Spiritual Alarm' : '🔔 Create Spiritual Alarm'}
+              </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-              {/* 1. Time Pickers */}
-              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary }]}>TIME</Text>
-              <View style={styles.timePickerContainer}>
-                {/* Hour */}
-                <ScrollView style={styles.pickerColumn} showsVerticalScrollIndicator={false}>
-                  {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((h) => (
-                    <TouchableOpacity
-                      key={h}
-                      style={[
-                        styles.pickerItem,
-                        selectedHour === h && { backgroundColor: colors.tintLight, borderColor: colors.tint },
-                      ]}
-                      onPress={() => setSelectedHour(h)}
-                    >
-                      <Text style={[styles.pickerItemText, { color: selectedHour === h ? colors.tint : colors.text }]}>
-                        {h.toString().padStart(2, '0')}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+            <ScrollView style={styles.modalScroll} nestedScrollEnabled={true} showsVerticalScrollIndicator={false}>
+              {/* 1. Center-Locked Tumbler Time Picker */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary }]}>SET ALARM TIME</Text>
+              
+              <View style={[styles.tumblerWheelContainer, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
+                {/* Hour Column */}
+                <View style={styles.tumblerColumn}>
+                  {/* Up Arrow */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedHour((prev) => (prev === 12 ? 1 : prev + 1))}
+                    style={[styles.tumblerArrowBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    activeOpacity={0.6}
+                    hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="chevron-up" size={18} color={colors.tint} />
+                  </TouchableOpacity>
 
-                <Text style={[styles.timeColon, { color: colors.text }]}>:</Text>
+                  {/* Previous Number (Dimmed Top) */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedHour((prev) => (prev === 1 ? 12 : prev - 1))}
+                    style={styles.tumblerGhostItem}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={[styles.tumblerGhostText, { color: colors.textSecondary }]}>
+                      {(selectedHour === 1 ? 12 : selectedHour - 1).toString().padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
 
-                {/* Minute (00 to 59, 1-by-1) */}
-                <ScrollView style={styles.pickerColumn} showsVerticalScrollIndicator={false}>
-                  {Array.from({ length: 60 }, (_, i) => i).map((m) => (
-                    <TouchableOpacity
-                      key={m}
-                      style={[
-                        styles.pickerItem,
-                        selectedMinute === m && { backgroundColor: colors.tintLight, borderColor: colors.tint },
-                      ]}
-                      onPress={() => setSelectedMinute(m)}
-                    >
-                      <Text style={[styles.pickerItemText, { color: selectedMinute === m ? colors.tint : colors.text }]}>
-                        {m.toString().padStart(2, '0')}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                  {/* CENTER SELECTED HOUR (Always Fixed in Center!) */}
+                  <View style={[styles.tumblerCenterPill, { backgroundColor: colors.tintLight, borderColor: colors.tint }]}>
+                    <Text style={[styles.tumblerCenterText, { color: colors.tint }]}>
+                      {selectedHour.toString().padStart(2, '0')}
+                    </Text>
+                  </View>
 
-                {/* AM/PM */}
-                <View style={styles.periodColumn}>
-                  {(['AM', 'PM'] as const).map((p) => (
-                    <TouchableOpacity
-                      key={p}
-                      style={[
-                        styles.periodBtn,
-                        selectedPeriod === p && { backgroundColor: colors.tint, borderColor: colors.tint },
-                      ]}
-                      onPress={() => setSelectedPeriod(p)}
-                    >
-                      <Text style={[styles.periodText, { color: selectedPeriod === p ? '#FFFFFF' : colors.text }]}>
-                        {p}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                  {/* Next Number (Dimmed Bottom) */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedHour((prev) => (prev === 12 ? 1 : prev + 1))}
+                    style={styles.tumblerGhostItem}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={[styles.tumblerGhostText, { color: colors.textSecondary }]}>
+                      {(selectedHour === 12 ? 1 : selectedHour + 1).toString().padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Down Arrow */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedHour((prev) => (prev === 1 ? 12 : prev - 1))}
+                    style={[styles.tumblerArrowBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    activeOpacity={0.6}
+                    hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="chevron-down" size={18} color={colors.tint} />
+                  </TouchableOpacity>
                 </View>
+
+                {/* Center Colon */}
+                <Text style={[styles.tumblerColon, { color: colors.tint }]}>:</Text>
+
+                {/* Minute Column */}
+                <View style={styles.tumblerColumn}>
+                  {/* Up Arrow */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedMinute((prev) => (prev + 1) % 60)}
+                    style={[styles.tumblerArrowBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    activeOpacity={0.6}
+                    hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="chevron-up" size={18} color={colors.tint} />
+                  </TouchableOpacity>
+
+                  {/* Previous Number (Dimmed Top) */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedMinute((prev) => (prev === 0 ? 59 : prev - 1))}
+                    style={styles.tumblerGhostItem}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={[styles.tumblerGhostText, { color: colors.textSecondary }]}>
+                      {((selectedMinute + 59) % 60).toString().padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* CENTER SELECTED MINUTE (Always Fixed in Center!) */}
+                  <View style={[styles.tumblerCenterPill, { backgroundColor: colors.tintLight, borderColor: colors.tint }]}>
+                    <Text style={[styles.tumblerCenterText, { color: colors.tint }]}>
+                      {selectedMinute.toString().padStart(2, '0')}
+                    </Text>
+                  </View>
+
+                  {/* Next Number (Dimmed Bottom) */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedMinute((prev) => (prev + 1) % 60)}
+                    style={styles.tumblerGhostItem}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={[styles.tumblerGhostText, { color: colors.textSecondary }]}>
+                      {((selectedMinute + 1) % 60).toString().padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Down Arrow */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedMinute((prev) => (prev === 0 ? 59 : prev - 1))}
+                    style={[styles.tumblerArrowBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    activeOpacity={0.6}
+                    hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="chevron-down" size={18} color={colors.tint} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* AM/PM Toggle Column */}
+                <View style={styles.tumblerPeriodColumn}>
+                  {(['AM', 'PM'] as const).map((p) => {
+                    const isSelected = selectedPeriod === p;
+                    return (
+                      <TouchableOpacity
+                        key={p}
+                        style={[
+                          styles.tumblerPeriodBtn,
+                          {
+                            backgroundColor: isSelected ? colors.tint : colors.glassInput,
+                            borderColor: isSelected ? colors.tint : colors.border,
+                          },
+                        ]}
+                        onPress={() => setSelectedPeriod(p)}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.tumblerPeriodText,
+                            { color: isSelected ? '#FFFFFF' : colors.text },
+                          ]}
+                        >
+                          {p}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Quick Minute Shortcuts */}
+              <View style={styles.quickMinutesRow}>
+                {[0, 15, 30, 45].map((qm) => {
+                  const isSel = selectedMinute === qm;
+                  return (
+                    <TouchableOpacity
+                      key={qm}
+                      style={[
+                        styles.quickMinBtn,
+                        {
+                          backgroundColor: isSel ? colors.tintLight : colors.glassInput,
+                          borderColor: isSel ? colors.tint : colors.border,
+                        },
+                      ]}
+                      onPress={() => setSelectedMinute(qm)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.quickMinBtnText,
+                          { color: isSel ? colors.tint : colors.textSecondary },
+                        ]}
+                      >
+                        :{qm.toString().padStart(2, '0')}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               {/* 2. Ring Duration (1 to 60 seconds) */}
@@ -994,7 +1125,9 @@ export default function AlarmScreen() {
                 onPress={handleSaveAlarm}
                 activeOpacity={0.8}
               >
-                <Text style={styles.saveAlarmBtnText}>Save Alarm</Text>
+                <Text style={styles.saveAlarmBtnText}>
+                  {editingAlarmId ? '💾 Save Alarm Changes' : '🔔 Create Spiritual Alarm'}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -1168,48 +1301,98 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 8,
   },
-  timePickerContainer: {
+  tumblerWheelContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 120,
-  },
-  pickerColumn: {
-    width: 65,
-    height: 120,
-  },
-  pickerItem: {
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'transparent',
+    marginBottom: 8,
+  },
+  tumblerColumn: {
     alignItems: 'center',
-    marginBottom: 4,
+    width: 76,
   },
-  pickerItemText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  timeColon: {
-    fontSize: 24,
-    fontWeight: '800',
-    marginHorizontal: 10,
-  },
-  periodColumn: {
-    marginLeft: 16,
-    justifyContent: 'center',
-  },
-  periodBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  tumblerArrowBtn: {
+    width: 48,
+    height: 32,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'transparent',
-    marginBottom: 6,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 4,
   },
-  periodText: {
-    fontSize: 13,
+  tumblerGhostItem: {
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  tumblerGhostText: {
+    fontSize: 16,
+    fontWeight: '600',
+    opacity: 0.45,
+  },
+  tumblerCenterPill: {
+    width: 68,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tumblerCenterText: {
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  tumblerColon: {
+    fontSize: 28,
+    fontWeight: '900',
+    marginHorizontal: 8,
+    alignSelf: 'center',
+  },
+  tumblerPeriodColumn: {
+    marginLeft: 14,
+    justifyContent: 'center',
+    gap: 8,
+  },
+  tumblerPeriodBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tumblerPeriodText: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  quickMinutesRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  quickMinBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  quickMinBtnText: {
+    fontSize: 12,
     fontWeight: '700',
   },
   modalInput: {
