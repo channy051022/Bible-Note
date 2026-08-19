@@ -60,7 +60,8 @@ export const SoundService = {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
-        shouldDuckAndroid: true,
+        shouldDuckAndroid: false,
+        playThroughEarpieceAndroid: false,
       });
 
       await this.stopAlarmRingtone();
@@ -71,20 +72,34 @@ export const SoundService = {
         source = { uri: customUri };
       } else {
         const key = ringtoneId && SOUND_ASSETS[ringtoneId] ? ringtoneId : 'chimes';
-        source = SOUND_ASSETS[key];
+        source = SOUND_ASSETS[key] || SOUND_ASSETS.chimes;
       }
 
-      const { sound } = await Audio.Sound.createAsync(
-        source,
-        {
-          shouldPlay: true,
-          isLooping: true,
-          volume: 1.0,
-        }
-      );
-
-      alarmSoundObject = sound;
-      await sound.playAsync();
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          source,
+          {
+            shouldPlay: true,
+            isLooping: true,
+            volume: 1.0,
+          }
+        );
+        alarmSoundObject = sound;
+        await sound.playAsync();
+      } catch (assetErr) {
+        console.warn('Initial alarm sound source failed, falling back to chimes:', assetErr);
+        // Fallback to built-in chimes if custom URI or asset had an issue
+        const { sound } = await Audio.Sound.createAsync(
+          SOUND_ASSETS.chimes,
+          {
+            shouldPlay: true,
+            isLooping: true,
+            volume: 1.0,
+          }
+        );
+        alarmSoundObject = sound;
+        await sound.playAsync();
+      }
     } catch (e) {
       console.warn('Error playing alarm ringtone:', e);
     }

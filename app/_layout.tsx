@@ -37,6 +37,17 @@ function AppLoadingScreen() {
   );
 }
 
+// Configure global foreground notification presentation
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
 function RootNavigationLayout() {
   const { isDark, colors } = useTheme();
   const [activeAlarm, setActiveAlarm] = useState<{
@@ -51,7 +62,24 @@ function RootNavigationLayout() {
   } | null>(null);
 
   useEffect(() => {
-    // 1. Listen for incoming notification in foreground
+    // 0. Handle cold-start from tapping notification on lock screen or banner
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response && response.notification?.request?.content?.data?.isSpiritualAlarm) {
+        const data = response.notification.request.content.data;
+        setActiveAlarm({
+          visible: true,
+          timeString: (data.timeString as string) || 'Spiritual Alarm',
+          verseText: (data.text as string) || 'The Lord is my shepherd; I shall not want.',
+          citation: (data.citation as string) || 'Psalm 23:1',
+          bookId: Number(data.bookId) || 19,
+          chapter: Number(data.chapter) || 23,
+          ringtoneId: data.ringtoneId as string,
+          customAudioUri: data.customAudioUri as string,
+        });
+      }
+    }).catch(() => {});
+
+    // 1. Listen for incoming notification in foreground (when screen is ON / user in app)
     const subReceived = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data;
       if (data && data.isSpiritualAlarm) {

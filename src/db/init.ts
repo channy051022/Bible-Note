@@ -2,6 +2,7 @@ import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as FileSystemRoot from 'expo-file-system';
 import { Asset } from 'expo-asset';
 import { type SQLiteDatabase } from 'expo-sqlite';
+import { initStorageFromDatabase } from '../utils/storage';
 
 export const DATABASE_NAME = 'bible.db';
 
@@ -156,6 +157,9 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
     } catch (ftsErr) {
       console.warn('Note FTS initialization note:', ftsErr);
     }
+
+    // Synchronize persistent Key-Value store with in-memory storage
+    await initStorageFromDatabase(db);
 
     console.log('SQLite database ready for E-Bible reading and notes.');
   } catch (error) {

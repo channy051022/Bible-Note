@@ -109,7 +109,32 @@ export const AlarmService = {
       // 3. Cancel previously scheduled notifications
       await Notifications.cancelAllScheduledNotificationsAsync();
 
-      // 4. Schedule all active alarms
+      // 4. Re-ensure daily 6:00 AM lockscreen verse notification stays registered
+      try {
+        const ref = getTodayVerseRef();
+        const book = BIBLE_BOOKS.find((b) => b.id === ref.bookId);
+        const citation = `${book?.name || 'Scripture'} ${ref.chapter}:${ref.verse}`;
+        await Notifications.scheduleNotificationAsync({
+          identifier: 'daily-verse-of-day-notification',
+          content: {
+            title: `✨ Verse of the Day • ${citation}`,
+            body: `May your heart be refreshed by God's Word today. Tap to read ${citation}.`,
+            sound: 'default',
+            priority: Notifications.AndroidNotificationPriority.DEFAULT,
+            data: { bookId: ref.bookId, chapter: ref.chapter, verse: ref.verse },
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour: 6,
+            minute: 0,
+            channelId: 'daily_verse_channel',
+          } as any,
+        });
+      } catch (dailyErr) {
+        console.warn('Error rescheduling daily verse along with alarms:', dailyErr);
+      }
+
+      // 5. Schedule all active alarms
       for (const alarm of alarms) {
         if (!alarm.isEnabled) continue;
 
@@ -120,10 +145,11 @@ export const AlarmService = {
         const verseBody = alarm.customText || 'The Lord is my shepherd; I shall not want.';
 
         await Notifications.scheduleNotificationAsync({
+          identifier: `alarm-${alarm.id}`,
           content: {
             title: `🔔 ${timeFormatted} • ${alarm.label}`,
             body: `✝️ ${citation}: "${verseBody}"`,
-            sound: true,
+            sound: 'default',
             priority: Notifications.AndroidNotificationPriority.MAX,
             categoryIdentifier: 'spiritual_alarm',
             data: {
@@ -142,6 +168,7 @@ export const AlarmService = {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour: alarm.hour,
             minute: alarm.minute,
+            channelId: 'spiritual_alarms_channel',
           } as any,
         });
       }
