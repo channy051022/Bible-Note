@@ -1,14 +1,39 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Image, Text } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DATABASE_NAME, copyDatabaseFileIfNotExists, initializeDatabase } from '../src/db/init';
 import { ThemeProvider, useTheme } from '../src/hooks/useTheme';
 import { NotificationService } from '../src/services/notificationService';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+function AppLoadingScreen() {
+  return (
+    <View style={styles.loadingContainer}>
+      <StatusBar style="light" backgroundColor="#121316" />
+      <View style={styles.loadingContent}>
+        <View style={styles.iconWrapper}>
+          <Image
+            source={require('../assets/icon.png')}
+            style={styles.loadingAppIcon}
+            resizeMode="cover"
+          />
+        </View>
+        <Text style={styles.loadingTitle}>SHEPHERD</Text>
+        <Text style={styles.loadingSubtitle}>HOLY BIBLE & DEVOTIONAL NOTES</Text>
+        <View style={styles.spinnerRow}>
+          <ActivityIndicator size="small" color="#E5A93C" />
+          <Text style={styles.loadingStatusText}>Opening your spiritual sanctuary...</Text>
+        </View>
+      </View>
+      <Text style={styles.loadingFooter}>Dual KJV & Cebuano • Offline Sanctuary</Text>
+    </View>
+  );
+}
 
 function RootNavigationLayout() {
   const { isDark, colors } = useTheme();
@@ -143,18 +168,20 @@ export default function RootLayout() {
 
   if (!isDbReady) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
+      <SafeAreaProvider>
+        <AppLoadingScreen />
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <ThemeProvider>
-      <SQLiteProvider databaseName={DATABASE_NAME} onInit={initializeDatabase}>
-        <RootNavigationLayout />
-      </SQLiteProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <SQLiteProvider databaseName={DATABASE_NAME} onInit={initializeDatabase}>
+          <RootNavigationLayout />
+        </SQLiteProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -163,6 +190,67 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#121316',
+  },
+  loadingContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  iconWrapper: {
+    width: 108,
+    height: 108,
+    borderRadius: 26,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(229, 169, 60, 0.35)',
+    shadowColor: '#E5A93C',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+    backgroundColor: '#1A1C22',
+  },
+  loadingAppIcon: {
+    width: '100%',
+    height: '100%',
+  },
+  loadingTitle: {
+    marginTop: 22,
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: 4,
+    color: '#F9FAFB',
+  },
+  loadingSubtitle: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 2,
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+  },
+  spinnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 32,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  loadingStatusText: {
+    marginLeft: 10,
+    fontSize: 12,
+    color: '#D1D5DB',
+    fontWeight: '500',
+  },
+  loadingFooter: {
+    position: 'absolute',
+    bottom: 36,
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#6B7280',
+    letterSpacing: 0.5,
   },
 });

@@ -3,10 +3,19 @@ import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Platform, TouchableOpacity, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
   const router = useRouter();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const isAndroid = Platform.OS === 'android';
+  const bottomInset = insets.bottom;
+  // On Android with 3-button navigation, bottomInset is 48-56dp; on gesture nav it's 16-32dp.
+  // We add bottomInset to tabHeight and paddingBottom so navigation items are completely above the phone's navigation bar.
+  const tabHeight = (isAndroid ? 60 : 54) + bottomInset;
+  const tabPaddingBottom = bottomInset > 0 ? bottomInset : (isAndroid ? 8 : 24);
 
   const renderHeaderRight = () => (
     <View style={styles.headerRightContainer}>
@@ -34,18 +43,27 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.tint,
         tabBarInactiveTintColor: colors.textSecondary,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           backgroundColor: colors.tabBar,
           borderTopColor: colors.tabBarBorder,
           borderTopWidth: StyleSheet.hairlineWidth,
-          height: Platform.OS === 'ios' ? 88 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 30 : 10,
+          height: tabHeight,
+          paddingBottom: tabPaddingBottom,
           paddingTop: 8,
-          elevation: 10,
+          elevation: 12,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -3 },
-          shadowOpacity: 0.06,
+          shadowOpacity: 0.08,
           shadowRadius: 10,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 2,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 2,
         },
         headerStyle: {
           backgroundColor: colors.background,
@@ -66,7 +84,7 @@ export default function TabLayout() {
           title: 'Home',
           headerTitle: 'SHEPHERD',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={23} color={color} />
           ),
         }}
       />
@@ -76,7 +94,7 @@ export default function TabLayout() {
           title: 'Bible',
           headerTitle: 'E-Bible',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'book' : 'book-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'book' : 'book-outline'} size={23} color={color} />
           ),
         }}
       />
@@ -86,7 +104,7 @@ export default function TabLayout() {
           title: 'Alarm',
           headerTitle: 'Spiritual Alarms',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'alarm' : 'alarm-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'alarm' : 'alarm-outline'} size={23} color={color} />
           ),
         }}
       />
@@ -95,7 +113,7 @@ export default function TabLayout() {
         options={{
           title: 'Notes',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'document-text' : 'document-text-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'document-text' : 'document-text-outline'} size={23} color={color} />
           ),
         }}
       />
@@ -104,7 +122,7 @@ export default function TabLayout() {
         options={{
           title: 'Plans',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={23} color={color} />
           ),
         }}
       />
@@ -123,3 +141,4 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 });
+
