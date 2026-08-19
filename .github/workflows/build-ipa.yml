@@ -17,10 +17,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Select Xcode and Run First Launch
+      - name: Select Xcode and Initialize Platform
         run: |
-          sudo xcode-select -s /Applications/Xcode_16.1.app || sudo xcode-select -s /Applications/Xcode_16.2.app || sudo xcode-select -s /Applications/Xcode.app
+          sudo xcode-select -s /Applications/Xcode_16.2.app || sudo xcode-select -s /Applications/Xcode_16.1.app || sudo xcode-select -s /Applications/Xcode.app
           sudo xcodebuild -runFirstLaunch || true
+          sudo xcodebuild -downloadPlatform iOS || true
           xcodebuild -version
 
       - name: Install dependencies
@@ -28,6 +29,11 @@ jobs:
 
       - name: Prebuild iOS project
         run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Fix Storyboard Target Devices for CI
+        run: |
+          find ios -name "SplashScreen.storyboard" -exec sed -i '' 's/<device [^>]*\/>/<device id="retina6_1" orientation="portrait" appearance="light"\/>/g' {} + || true
+          echo "Updated SplashScreen.storyboard device compatibility"
 
       - name: Configure Xcode Node Environment
         run: |
