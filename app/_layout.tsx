@@ -285,7 +285,7 @@ export default function RootLayout() {
 
         setIsDbReady(true);
         // Automatically schedule daily morning Verse of the Day lockscreen notification
-        NotificationService.setupDailyLockscreenVerse(8, 0).catch(() => {});
+        NotificationService.setupDailyLockscreenVerse(6, 0).catch(() => {});
       } catch (e) {
         console.error('Database file copy failed:', e);
         setError(e as Error);

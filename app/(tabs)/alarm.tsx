@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,9 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+  Platform,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as DocumentPicker from 'expo-document-picker';
@@ -21,32 +24,23 @@ import { ActiveAlarmModal } from '../../src/components/ActiveAlarmModal';
 import { BUILT_IN_RINGTONES, SoundService } from '../../src/services/soundService';
 import { getTodayVerseRef } from '../../src/constants/VerseOfTheDay';
 import { BibleRepo } from '../../src/db/bibleRepo';
-import { getItem, StorageKeys } from '../../src/utils/storage';
+import { getItem, setItem, StorageKeys } from '../../src/utils/storage';
 import { BibleVersion, Verse } from '../../src/types/bible';
 import { BIBLE_BOOKS } from '../../src/constants/BibleBooks';
 
-const SCRIPTURE_PRESETS = [
-  {
-    id: 'daily',
-    name: '🌟 Daily Verse of the Day (Auto)',
-    citation: 'Daily Scripture',
-    text: 'God\'s fresh Word for your day.',
-  },
-  {
-    id: 'bible_picker',
-    name: '📖 Choose Any Verse from the Bible',
-    citation: 'Bible Scripture',
-    text: 'Select any Book, Chapter, and Verse from the Holy Scriptures.',
-  },
-  {
-    id: 'custom',
-    name: '✍️ Custom Scripture Text (Type Your Own)',
-    citation: 'Custom Scripture',
-    text: 'Type or paste your personal scripture and devotion note.',
-  },
+export interface CustomAlarmVerse {
+  id: string;
+  citation: string;
+  text: string;
+  bookId?: number;
+  chapter?: number;
+  verse?: number;
+  isCustomUserAdded?: boolean;
+}
+
+const DEFAULT_SAVED_VERSES: CustomAlarmVerse[] = [
   {
     id: 'psalm23',
-    name: '🕊️ Psalm 23:1 (The Lord is my Shepherd)',
     citation: 'Psalm 23:1',
     text: 'The Lord is my shepherd; I shall not want.',
     bookId: 19,
@@ -55,7 +49,6 @@ const SCRIPTURE_PRESETS = [
   },
   {
     id: 'matthew6',
-    name: '☀️ Matthew 6:33 (Seek First God\'s Kingdom)',
     citation: 'Matthew 6:33',
     text: 'Seek ye first the kingdom of God, and his righteousness; and all these things shall be added unto you.',
     bookId: 40,
@@ -64,8 +57,7 @@ const SCRIPTURE_PRESETS = [
   },
   {
     id: 'philippians4',
-    name: '🙏 Philippians 4:6-7 (Peace of God)',
-    citation: 'Philippians 4:6',
+    citation: 'Philippians 4:6-7',
     text: 'Be careful for nothing; but in every thing by prayer and supplication with thanksgiving let your requests be made known unto God.',
     bookId: 50,
     chapter: 4,
@@ -73,14 +65,31 @@ const SCRIPTURE_PRESETS = [
   },
   {
     id: 'proverbs3',
-    name: '🧭 Proverbs 3:5-6 (Trust in the Lord)',
-    citation: 'Proverbs 3:5',
+    citation: 'Proverbs 3:5-6',
     text: 'Trust in the Lord with all thine heart; and lean not unto thine own understanding.',
     bookId: 20,
     chapter: 3,
     verse: 5,
   },
+  {
+    id: 'john316',
+    citation: 'John 3:16',
+    text: 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.',
+    bookId: 43,
+    chapter: 3,
+    verse: 16,
+  },
+  {
+    id: 'isaiah40',
+    citation: 'Isaiah 40:31',
+    text: 'They that wait upon the Lord shall renew their strength; they shall mount up with wings as eagles.',
+    bookId: 23,
+    chapter: 40,
+    verse: 31,
+  },
 ];
+
+const CUSTOM_VERSES_STORAGE_KEY = 'CUSTOM_ALARM_VERSES';
 
 const DAYS_OF_WEEK = [
   { label: 'S', value: 0 },
@@ -91,6 +100,10 @@ const DAYS_OF_WEEK = [
   { label: 'F', value: 5 },
   { label: 'S', value: 6 },
 ];
+
+const HOURS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const MINUTES = Array.from({ length: 60 }, (_, i) => i);
+const TUMBLER_ITEM_HEIGHT = 44;
 
 export default function AlarmScreen() {
   const db = useSQLiteContext();
@@ -116,6 +129,11 @@ export default function AlarmScreen() {
     ringtoneId: 'chimes',
   });
 
+  // Saved / User-added Custom Verses
+  const [savedVerses, setSavedVerses] = useState<CustomAlarmVerse[]>(() => {
+    return getItem<CustomAlarmVerse[]>(CUSTOM_VERSES_STORAGE_KEY, DEFAULT_SAVED_VERSES);
+  });
+
   // Modal for Add/Edit Alarm
   const [modalVisible, setModalVisible] = useState<boolean>(false);
   const [editingAlarmId, setEditingAlarmId] = useState<string | null>(null);
@@ -124,6 +142,12 @@ export default function AlarmScreen() {
   const [selectedPeriod, setSelectedPeriod] = useState<'AM' | 'PM'>('AM');
   const [alarmLabel, setAlarmLabel] = useState<string>('Morning Devotion');
   const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+
+  // Dropdown states to minimize scrolling
+  const [isScriptureDropdownOpen, setIsScriptureDropdownOpen] = useState<boolean>(false);
+  const [isRingtoneDropdownOpen, setIsRingtoneDropdownOpen] = useState<boolean>(false);
+
+  // Scripture selection state
   const [selectedPresetId, setSelectedPresetId] = useState<string>('daily');
   const [customVerseCitation, setCustomVerseCitation] = useState<string>('John 3:16');
   const [customVerseText, setCustomVerseText] = useState<string>(
@@ -135,14 +159,47 @@ export default function AlarmScreen() {
   const [customAudioName, setCustomAudioName] = useState<string | undefined>(undefined);
   const [previewingRingtoneId, setPreviewingRingtoneId] = useState<string | null>(null);
 
-  // Interactive Bible Scripture Picker state inside Alarm modal
+  // Interactive Bible Scripture Picker state
   const [pickerBookId, setPickerBookId] = useState<number>(43); // John
   const [pickerChapter, setPickerChapter] = useState<number>(3);
   const [pickerVerse, setPickerVerse] = useState<number>(16);
   const [pickerVersesList, setPickerVersesList] = useState<Verse[]>([]);
   const [pickerLoading, setPickerLoading] = useState<boolean>(false);
 
-  // Load verses whenever Bible picker selection changes
+  // Add New Verse Sub-Modal state
+  const [addVerseModalVisible, setAddVerseModalVisible] = useState<boolean>(false);
+  const [addVerseMode, setAddVerseMode] = useState<'bible' | 'custom'>('bible');
+  const [newCustomCitation, setNewCustomCitation] = useState<string>('');
+  const [newCustomText, setNewCustomText] = useState<string>('');
+  const [newPickerBookId, setNewPickerBookId] = useState<number>(43);
+  const [newPickerChapter, setNewPickerChapter] = useState<number>(3);
+  const [newPickerVerse, setNewPickerVerse] = useState<number>(16);
+  const [newPickerVersesList, setNewPickerVersesList] = useState<Verse[]>([]);
+  const [newPickerLoading, setNewPickerLoading] = useState<boolean>(false);
+
+  // Scroll references for Tumbler Time Picker
+  const hourScrollRef = useRef<ScrollView>(null);
+  const minuteScrollRef = useRef<ScrollView>(null);
+
+  // Scroll Tumblers to current values when modal opens
+  useEffect(() => {
+    if (modalVisible) {
+      const timer = setTimeout(() => {
+        const hIdx = Math.max(0, selectedHour - 1);
+        hourScrollRef.current?.scrollTo({
+          y: hIdx * TUMBLER_ITEM_HEIGHT,
+          animated: false,
+        });
+        minuteScrollRef.current?.scrollTo({
+          y: selectedMinute * TUMBLER_ITEM_HEIGHT,
+          animated: false,
+        });
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [modalVisible]);
+
+  // Load verses for main alarm picker
   useEffect(() => {
     async function loadPickerVerses() {
       if (selectedPresetId !== 'bible_picker') return;
@@ -165,6 +222,30 @@ export default function AlarmScreen() {
     }
     loadPickerVerses();
   }, [selectedPresetId, pickerBookId, pickerChapter, pickerVerse, db]);
+
+  // Load verses for Add New Verse modal picker
+  useEffect(() => {
+    async function loadNewPickerVerses() {
+      if (!addVerseModalVisible || addVerseMode !== 'bible') return;
+      setNewPickerLoading(true);
+      try {
+        const v = getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
+        const list = await BibleRepo.getChapterVerses(db, newPickerBookId, newPickerChapter, v);
+        setNewPickerVersesList(list);
+        const activeVerseObj = list.find((item) => item.verse === newPickerVerse) || list[0];
+        const book = BIBLE_BOOKS.find((b) => b.id === newPickerBookId);
+        if (activeVerseObj && book) {
+          setNewCustomCitation(`${book.name} ${newPickerChapter}:${activeVerseObj.verse}`);
+          setNewCustomText(activeVerseObj.text);
+        }
+      } catch (e) {
+        console.warn('Error loading verses for new verse picker:', e);
+      } finally {
+        setNewPickerLoading(false);
+      }
+    }
+    loadNewPickerVerses();
+  }, [addVerseModalVisible, addVerseMode, newPickerBookId, newPickerChapter, newPickerVerse, db]);
 
   // Load alarms on mount
   useEffect(() => {
@@ -253,7 +334,6 @@ export default function AlarmScreen() {
         setCustomAudioUri(file.uri);
         setCustomAudioName(file.name);
         setSelectedRingtoneId('custom');
-        // Preview the picked song
         handlePreviewRingtone('custom', file.uri);
       }
     } catch (e) {
@@ -264,6 +344,8 @@ export default function AlarmScreen() {
   const openAddModal = (alarmToEdit?: SpiritualAlarm) => {
     SoundService.stopPreview();
     setPreviewingRingtoneId(null);
+    setIsScriptureDropdownOpen(false);
+    setIsRingtoneDropdownOpen(false);
 
     if (alarmToEdit) {
       setEditingAlarmId(alarmToEdit.id);
@@ -274,9 +356,23 @@ export default function AlarmScreen() {
       setSelectedPeriod(isPM ? 'PM' : 'AM');
       setAlarmLabel(alarmToEdit.label);
       setSelectedDays(alarmToEdit.days || [0, 1, 2, 3, 4, 5, 6]);
-      setSelectedPresetId(
-        alarmToEdit.verseSource === 'custom' && alarmToEdit.bookId ? 'bible_picker' : alarmToEdit.verseSource
-      );
+
+      // Match preset or saved verse
+      if (alarmToEdit.verseSource === 'daily') {
+        setSelectedPresetId('daily');
+      } else if (alarmToEdit.customCitation) {
+        const match = savedVerses.find((v) => v.citation === alarmToEdit.customCitation);
+        if (match) {
+          setSelectedPresetId(match.id);
+        } else if (alarmToEdit.bookId) {
+          setSelectedPresetId('bible_picker');
+        } else {
+          setSelectedPresetId('custom_manual');
+        }
+      } else {
+        setSelectedPresetId('daily');
+      }
+
       setSelectedRingtoneId(alarmToEdit.ringtoneId || 'chimes');
       setCustomAudioUri(alarmToEdit.customAudioUri);
       setCustomAudioName(alarmToEdit.customAudioName);
@@ -322,19 +418,36 @@ export default function AlarmScreen() {
     let hour24 = selectedHour % 12;
     if (selectedPeriod === 'PM') hour24 += 12;
 
-    const preset = SCRIPTURE_PRESETS.find((p) => p.id === selectedPresetId) || SCRIPTURE_PRESETS[0];
-    const isCustomOrPicker = selectedPresetId === 'custom' || selectedPresetId === 'bible_picker';
-    const finalCitation = isCustomOrPicker
-      ? customVerseCitation.trim() || 'Custom Scripture'
-      : preset.id === 'daily'
-      ? undefined
-      : preset.citation;
+    const isDaily = selectedPresetId === 'daily';
+    const isPicker = selectedPresetId === 'bible_picker';
+    const isManual = selectedPresetId === 'custom_manual';
+    const matchedSaved = savedVerses.find((v) => v.id === selectedPresetId);
 
-    const finalText = isCustomOrPicker
-      ? customVerseText.trim() || 'The Lord is my shepherd; I shall not want.'
-      : preset.id === 'daily'
-      ? undefined
-      : preset.text;
+    let finalCitation: string | undefined = undefined;
+    let finalText: string | undefined = undefined;
+    let bookId: number | undefined = undefined;
+    let chapter: number | undefined = undefined;
+    let verse: number | undefined = undefined;
+
+    if (isDaily) {
+      finalCitation = undefined;
+      finalText = undefined;
+    } else if (matchedSaved) {
+      finalCitation = matchedSaved.citation;
+      finalText = matchedSaved.text;
+      bookId = matchedSaved.bookId;
+      chapter = matchedSaved.chapter;
+      verse = matchedSaved.verse;
+    } else if (isPicker) {
+      finalCitation = customVerseCitation.trim() || 'Bible Scripture';
+      finalText = customVerseText.trim() || 'God is our refuge and strength.';
+      bookId = pickerBookId;
+      chapter = pickerChapter;
+      verse = pickerVerse;
+    } else if (isManual) {
+      finalCitation = customVerseCitation.trim() || 'Custom Scripture';
+      finalText = customVerseText.trim() || 'The Lord is my shepherd; I shall not want.';
+    }
 
     const newAlarm: SpiritualAlarm = {
       id: editingAlarmId || `alarm-${Date.now()}`,
@@ -343,12 +456,12 @@ export default function AlarmScreen() {
       label: alarmLabel.trim() || 'Spiritual Alarm',
       days: selectedDays,
       isEnabled: true,
-      verseSource: isCustomOrPicker ? 'custom' : (preset.id as any),
+      verseSource: isDaily ? 'daily' : 'custom',
       customCitation: finalCitation,
       customText: finalText,
-      bookId: selectedPresetId === 'bible_picker' ? pickerBookId : preset.bookId,
-      chapter: selectedPresetId === 'bible_picker' ? pickerChapter : preset.chapter,
-      verse: selectedPresetId === 'bible_picker' ? pickerVerse : preset.verse,
+      bookId: isDaily ? undefined : bookId,
+      chapter: isDaily ? undefined : chapter,
+      verse: isDaily ? undefined : verse,
       ringtoneId: selectedRingtoneId,
       customAudioUri: selectedRingtoneId === 'custom' ? customAudioUri : undefined,
       customAudioName: selectedRingtoneId === 'custom' ? customAudioName : undefined,
@@ -373,6 +486,166 @@ export default function AlarmScreen() {
       setSelectedDays([...selectedDays, day].sort());
     }
   };
+
+  // Scroll time handlers
+  const onHourScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const index = Math.round(y / TUMBLER_ITEM_HEIGHT);
+    const clamped = Math.max(0, Math.min(HOURS.length - 1, index));
+    setSelectedHour(HOURS[clamped]);
+  };
+
+  const onMinuteScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const index = Math.round(y / TUMBLER_ITEM_HEIGHT);
+    const clamped = Math.max(0, Math.min(MINUTES.length - 1, index));
+    setSelectedMinute(MINUTES[clamped]);
+  };
+
+  const stepHour = (delta: number) => {
+    let next = selectedHour + delta;
+    if (next < 1) next = 12;
+    if (next > 12) next = 1;
+    setSelectedHour(next);
+    hourScrollRef.current?.scrollTo({
+      y: (next - 1) * TUMBLER_ITEM_HEIGHT,
+      animated: true,
+    });
+  };
+
+  const stepMinute = (delta: number) => {
+    let next = (selectedMinute + delta + 60) % 60;
+    setSelectedMinute(next);
+    minuteScrollRef.current?.scrollTo({
+      y: next * TUMBLER_ITEM_HEIGHT,
+      animated: true,
+    });
+  };
+
+  const setQuickMinute = (m: number) => {
+    setSelectedMinute(m);
+    minuteScrollRef.current?.scrollTo({
+      y: m * TUMBLER_ITEM_HEIGHT,
+      animated: true,
+    });
+  };
+
+  // Add / Delete Custom Verses
+  const openAddNewVerseModal = () => {
+    setNewPickerBookId(43);
+    setNewPickerChapter(3);
+    setNewPickerVerse(16);
+    setNewCustomCitation('John 3:16');
+    setNewCustomText(
+      'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'
+    );
+    setAddVerseMode('bible');
+    setAddVerseModalVisible(true);
+  };
+
+  const handleSaveNewCustomVerse = () => {
+    if (!newCustomCitation.trim() || !newCustomText.trim()) {
+      Alert.alert('Incomplete Verse', 'Please provide a citation and verse text.');
+      return;
+    }
+
+    const newVerseItem: CustomAlarmVerse = {
+      id: `user-verse-${Date.now()}`,
+      citation: newCustomCitation.trim(),
+      text: newCustomText.trim(),
+      bookId: addVerseMode === 'bible' ? newPickerBookId : undefined,
+      chapter: addVerseMode === 'bible' ? newPickerChapter : undefined,
+      verse: addVerseMode === 'bible' ? newPickerVerse : undefined,
+      isCustomUserAdded: true,
+    };
+
+    const updated = [newVerseItem, ...savedVerses];
+    setSavedVerses(updated);
+    setItem(CUSTOM_VERSES_STORAGE_KEY, updated);
+
+    // Automatically select this new verse for the alarm
+    setSelectedPresetId(newVerseItem.id);
+    setCustomVerseCitation(newVerseItem.citation);
+    setCustomVerseText(newVerseItem.text);
+    if (newVerseItem.bookId) {
+      setPickerBookId(newVerseItem.bookId);
+      setPickerChapter(newVerseItem.chapter || 1);
+      setPickerVerse(newVerseItem.verse || 1);
+    }
+
+    setAddVerseModalVisible(false);
+    setIsScriptureDropdownOpen(false);
+    Alert.alert('Verse Added! ✨', `"${newVerseItem.citation}" has been added and selected for your alarm.`);
+  };
+
+  const handleDeleteCustomVerse = (id: string, citation: string) => {
+    Alert.alert('Remove Verse', `Are you sure you want to remove "${citation}" from your saved verses list?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          const updated = savedVerses.filter((v) => v.id !== id);
+          setSavedVerses(updated);
+          setItem(CUSTOM_VERSES_STORAGE_KEY, updated);
+          if (selectedPresetId === id) {
+            setSelectedPresetId('daily');
+          }
+        },
+      },
+    ]);
+  };
+
+  // Derive active scripture title & preview for dropdown header
+  const getSelectedScriptureSummary = () => {
+    if (selectedPresetId === 'daily') {
+      return {
+        title: '🌟 Daily Verse of the Day (Auto)',
+        quote: "Rotates automatically with God's fresh Word each day.",
+      };
+    }
+    if (selectedPresetId === 'bible_picker') {
+      return {
+        title: `📖 ${customVerseCitation || 'Choose from Bible'}`,
+        quote: customVerseText || 'Select any Book, Chapter, and Verse.',
+      };
+    }
+    if (selectedPresetId === 'custom_manual') {
+      return {
+        title: `✍️ ${customVerseCitation || 'Custom Scripture'}`,
+        quote: customVerseText || 'Personal custom scripture.',
+      };
+    }
+    const matched = savedVerses.find((v) => v.id === selectedPresetId);
+    if (matched) {
+      return {
+        title: `🕊️ ${matched.citation}`,
+        quote: matched.text,
+      };
+    }
+    return {
+      title: '🌟 Daily Verse of the Day (Auto)',
+      quote: "Rotates automatically with God's fresh Word each day.",
+    };
+  };
+
+  // Derive active ringtone title & description for dropdown header
+  const getSelectedRingtoneSummary = () => {
+    if (selectedRingtoneId === 'custom') {
+      return {
+        title: `🎵 ${customAudioName || 'Custom Imported Music'}`,
+        desc: 'Imported from your phone storage',
+      };
+    }
+    const builtIn = BUILT_IN_RINGTONES.find((r) => r.id === selectedRingtoneId);
+    return {
+      title: builtIn?.title || '🔔 Energetic Wake Chimes',
+      desc: builtIn?.description || 'Bright ascending morning bell melody',
+    };
+  };
+
+  const scriptureSummary = getSelectedScriptureSummary();
+  const ringtoneSummary = getSelectedRingtoneSummary();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -462,7 +735,7 @@ export default function AlarmScreen() {
                     <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} style={{ marginRight: 5 }} />
                     <Text style={[styles.detailText, { color: colors.textSecondary }]}>{daysFormatted}</Text>
                   </View>
-                  <View style={styles.detailItem}>
+                  <View style={[styles.detailItem, { flex: 1 }]}>
                     <Ionicons name="book-outline" size={14} color={colors.textSecondary} style={{ marginRight: 5 }} />
                     <Text style={[styles.detailText, { color: colors.textSecondary }]} numberOfLines={1}>
                       {alarm.verseSource === 'daily' ? 'Daily Scripture' : alarm.customCitation || 'Psalm 23:1'}
@@ -529,15 +802,22 @@ export default function AlarmScreen() {
             </View>
 
             <ScrollView style={styles.modalScroll} nestedScrollEnabled={true} showsVerticalScrollIndicator={false}>
-              {/* 1. Center-Locked Tumbler Time Picker */}
-              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary }]}>SET ALARM TIME</Text>
-              
+              {/* 1. Scrollable + Tap Tumbler Time Picker */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginBottom: 0 }]}>
+                  SET ALARM TIME
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.tint, fontWeight: '600' }}>
+                  Scroll or tap arrows
+                </Text>
+              </View>
+
               <View style={[styles.tumblerWheelContainer, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
                 {/* Hour Column */}
                 <View style={styles.tumblerColumn}>
                   {/* Up Arrow */}
                   <TouchableOpacity
-                    onPress={() => setSelectedHour((prev) => (prev === 12 ? 1 : prev + 1))}
+                    onPress={() => stepHour(-1)}
                     style={[styles.tumblerArrowBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
                     activeOpacity={0.6}
                     hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
@@ -545,38 +825,65 @@ export default function AlarmScreen() {
                     <Ionicons name="chevron-up" size={18} color={colors.tint} />
                   </TouchableOpacity>
 
-                  {/* Previous Number (Dimmed Top) */}
-                  <TouchableOpacity
-                    onPress={() => setSelectedHour((prev) => (prev === 1 ? 12 : prev - 1))}
-                    style={styles.tumblerGhostItem}
-                    activeOpacity={0.6}
-                  >
-                    <Text style={[styles.tumblerGhostText, { color: colors.textSecondary }]}>
-                      {(selectedHour === 1 ? 12 : selectedHour - 1).toString().padStart(2, '0')}
-                    </Text>
-                  </TouchableOpacity>
+                  {/* Scrollable Hours Window */}
+                  <View style={styles.wheelWindow}>
+                    {/* Fixed Center Highlight Frame */}
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        styles.tumblerCenterHighlight,
+                        { backgroundColor: colors.tintLight, borderColor: colors.tint },
+                      ]}
+                    />
 
-                  {/* CENTER SELECTED HOUR (Always Fixed in Center!) */}
-                  <View style={[styles.tumblerCenterPill, { backgroundColor: colors.tintLight, borderColor: colors.tint }]}>
-                    <Text style={[styles.tumblerCenterText, { color: colors.tint }]}>
-                      {selectedHour.toString().padStart(2, '0')}
-                    </Text>
+                    <ScrollView
+                      ref={hourScrollRef}
+                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator={false}
+                      snapToInterval={TUMBLER_ITEM_HEIGHT}
+                      decelerationRate="fast"
+                      onMomentumScrollEnd={onHourScrollEnd}
+                      onScrollEndDrag={onHourScrollEnd}
+                      style={styles.wheelScrollView}
+                    >
+                      {/* Top Padding Spacer */}
+                      <View style={{ height: TUMBLER_ITEM_HEIGHT }} />
+
+                      {HOURS.map((h) => {
+                        const isSelected = selectedHour === h;
+                        return (
+                          <TouchableOpacity
+                            key={h}
+                            style={styles.wheelItem}
+                            onPress={() => {
+                              setSelectedHour(h);
+                              hourScrollRef.current?.scrollTo({
+                                y: (h - 1) * TUMBLER_ITEM_HEIGHT,
+                                animated: true,
+                              });
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                isSelected ? styles.wheelTextSelected : styles.wheelTextDimmed,
+                                { color: isSelected ? colors.tint : colors.textSecondary },
+                              ]}
+                            >
+                              {h.toString().padStart(2, '0')}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+
+                      {/* Bottom Padding Spacer */}
+                      <View style={{ height: TUMBLER_ITEM_HEIGHT }} />
+                    </ScrollView>
                   </View>
-
-                  {/* Next Number (Dimmed Bottom) */}
-                  <TouchableOpacity
-                    onPress={() => setSelectedHour((prev) => (prev === 12 ? 1 : prev + 1))}
-                    style={styles.tumblerGhostItem}
-                    activeOpacity={0.6}
-                  >
-                    <Text style={[styles.tumblerGhostText, { color: colors.textSecondary }]}>
-                      {(selectedHour === 12 ? 1 : selectedHour + 1).toString().padStart(2, '0')}
-                    </Text>
-                  </TouchableOpacity>
 
                   {/* Down Arrow */}
                   <TouchableOpacity
-                    onPress={() => setSelectedHour((prev) => (prev === 1 ? 12 : prev - 1))}
+                    onPress={() => stepHour(1)}
                     style={[styles.tumblerArrowBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
                     activeOpacity={0.6}
                     hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
@@ -592,7 +899,7 @@ export default function AlarmScreen() {
                 <View style={styles.tumblerColumn}>
                   {/* Up Arrow */}
                   <TouchableOpacity
-                    onPress={() => setSelectedMinute((prev) => (prev + 1) % 60)}
+                    onPress={() => stepMinute(-1)}
                     style={[styles.tumblerArrowBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
                     activeOpacity={0.6}
                     hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
@@ -600,38 +907,65 @@ export default function AlarmScreen() {
                     <Ionicons name="chevron-up" size={18} color={colors.tint} />
                   </TouchableOpacity>
 
-                  {/* Previous Number (Dimmed Top) */}
-                  <TouchableOpacity
-                    onPress={() => setSelectedMinute((prev) => (prev === 0 ? 59 : prev - 1))}
-                    style={styles.tumblerGhostItem}
-                    activeOpacity={0.6}
-                  >
-                    <Text style={[styles.tumblerGhostText, { color: colors.textSecondary }]}>
-                      {((selectedMinute + 59) % 60).toString().padStart(2, '0')}
-                    </Text>
-                  </TouchableOpacity>
+                  {/* Scrollable Minutes Window */}
+                  <View style={styles.wheelWindow}>
+                    {/* Fixed Center Highlight Frame */}
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        styles.tumblerCenterHighlight,
+                        { backgroundColor: colors.tintLight, borderColor: colors.tint },
+                      ]}
+                    />
 
-                  {/* CENTER SELECTED MINUTE (Always Fixed in Center!) */}
-                  <View style={[styles.tumblerCenterPill, { backgroundColor: colors.tintLight, borderColor: colors.tint }]}>
-                    <Text style={[styles.tumblerCenterText, { color: colors.tint }]}>
-                      {selectedMinute.toString().padStart(2, '0')}
-                    </Text>
+                    <ScrollView
+                      ref={minuteScrollRef}
+                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator={false}
+                      snapToInterval={TUMBLER_ITEM_HEIGHT}
+                      decelerationRate="fast"
+                      onMomentumScrollEnd={onMinuteScrollEnd}
+                      onScrollEndDrag={onMinuteScrollEnd}
+                      style={styles.wheelScrollView}
+                    >
+                      {/* Top Padding Spacer */}
+                      <View style={{ height: TUMBLER_ITEM_HEIGHT }} />
+
+                      {MINUTES.map((m) => {
+                        const isSelected = selectedMinute === m;
+                        return (
+                          <TouchableOpacity
+                            key={m}
+                            style={styles.wheelItem}
+                            onPress={() => {
+                              setSelectedMinute(m);
+                              minuteScrollRef.current?.scrollTo({
+                                y: m * TUMBLER_ITEM_HEIGHT,
+                                animated: true,
+                              });
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                isSelected ? styles.wheelTextSelected : styles.wheelTextDimmed,
+                                { color: isSelected ? colors.tint : colors.textSecondary },
+                              ]}
+                            >
+                              {m.toString().padStart(2, '0')}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+
+                      {/* Bottom Padding Spacer */}
+                      <View style={{ height: TUMBLER_ITEM_HEIGHT }} />
+                    </ScrollView>
                   </View>
-
-                  {/* Next Number (Dimmed Bottom) */}
-                  <TouchableOpacity
-                    onPress={() => setSelectedMinute((prev) => (prev + 1) % 60)}
-                    style={styles.tumblerGhostItem}
-                    activeOpacity={0.6}
-                  >
-                    <Text style={[styles.tumblerGhostText, { color: colors.textSecondary }]}>
-                      {((selectedMinute + 1) % 60).toString().padStart(2, '0')}
-                    </Text>
-                  </TouchableOpacity>
 
                   {/* Down Arrow */}
                   <TouchableOpacity
-                    onPress={() => setSelectedMinute((prev) => (prev === 0 ? 59 : prev - 1))}
+                    onPress={() => stepMinute(1)}
                     style={[styles.tumblerArrowBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
                     activeOpacity={0.6}
                     hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
@@ -685,7 +1019,7 @@ export default function AlarmScreen() {
                           borderColor: isSel ? colors.tint : colors.border,
                         },
                       ]}
-                      onPress={() => setSelectedMinute(qm)}
+                      onPress={() => setQuickMinute(qm)}
                       activeOpacity={0.7}
                     >
                       <Text
@@ -701,63 +1035,8 @@ export default function AlarmScreen() {
                 })}
               </View>
 
-              {/* 2. Ring Duration (1 to 60 seconds) */}
-              <View style={{ marginTop: 16 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginBottom: 0 }]}>
-                    ALARM DURATION (1–60 SECONDS)
-                  </Text>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.tint }}>
-                    {alarmDurationSeconds} sec
-                  </Text>
-                </View>
-
-                <View style={styles.durationSelectorRow}>
-                  <TouchableOpacity
-                    onPress={() => setAlarmDurationSeconds((prev) => Math.max(1, prev - 1))}
-                    style={[styles.durationStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Ionicons name="remove" size={16} color={colors.text} />
-                  </TouchableOpacity>
-
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.durationScroll}>
-                    {[1, 5, 10, 15, 20, 30, 45, 60].map((sec) => (
-                      <TouchableOpacity
-                        key={sec}
-                        onPress={() => setAlarmDurationSeconds(sec)}
-                        style={[
-                          styles.durationQuickPill,
-                          {
-                            backgroundColor: alarmDurationSeconds === sec ? colors.tint : colors.glassInput,
-                            borderColor: alarmDurationSeconds === sec ? colors.tint : colors.border,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.durationQuickPillText,
-                            { color: alarmDurationSeconds === sec ? '#FFFFFF' : colors.text },
-                          ]}
-                        >
-                          {sec}s
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-
-                  <TouchableOpacity
-                    onPress={() => setAlarmDurationSeconds((prev) => Math.min(60, prev + 1))}
-                    style={[styles.durationStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Ionicons name="add" size={16} color={colors.text} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* 3. Label Input */}
-              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 16 }]}>ALARM LABEL</Text>
+              {/* 2. Alarm Label Input */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 14 }]}>ALARM LABEL</Text>
               <TextInput
                 style={[styles.modalInput, { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border }]}
                 value={alarmLabel}
@@ -766,8 +1045,8 @@ export default function AlarmScreen() {
                 placeholderTextColor={colors.textTertiary}
               />
 
-              {/* 4. Repeat Days */}
-              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 16 }]}>REPEAT DAYS</Text>
+              {/* 3. Repeat Days */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 14 }]}>REPEAT DAYS</Text>
               <View style={styles.daysRow}>
                 {DAYS_OF_WEEK.map((d) => {
                   const isDaySelected = selectedDays.includes(d.value);
@@ -791,46 +1070,224 @@ export default function AlarmScreen() {
                 })}
               </View>
 
-              {/* 5. Scripture Preset & Custom Verse */}
-              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 16 }]}>
-                SCRIPTURE GREETING
-              </Text>
-              {SCRIPTURE_PRESETS.map((preset) => {
-                const isSelected = selectedPresetId === preset.id;
-                return (
+              {/* 4. SCRIPTURE GREETING (COMPACT DROPDOWN WITH ADD VERSE) */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 8 }}>
+                <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginBottom: 0 }]}>
+                  SCRIPTURE GREETING
+                </Text>
+                <TouchableOpacity
+                  onPress={openAddNewVerseModal}
+                  style={styles.addVerseHeaderBtn}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add-circle" size={14} color={colors.tint} style={{ marginRight: 4 }} />
+                  <Text style={[styles.addVerseHeaderBtnText, { color: colors.tint }]}>+ Add New Verse</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Scripture Dropdown Header Card */}
+              <TouchableOpacity
+                style={[
+                  styles.dropdownHeaderCard,
+                  {
+                    backgroundColor: colors.glassCard,
+                    borderColor: isScriptureDropdownOpen ? colors.tint : colors.border,
+                  },
+                ]}
+                onPress={() => setIsScriptureDropdownOpen((prev) => !prev)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.dropdownHeaderTitle, { color: colors.tint }]}>
+                    {scriptureSummary.title}
+                  </Text>
+                  <Text style={[styles.dropdownHeaderSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                    "{scriptureSummary.quote}"
+                  </Text>
+                </View>
+                <View style={[styles.dropdownChevronCircle, { backgroundColor: colors.glassInput }]}>
+                  <Ionicons
+                    name={isScriptureDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={colors.tint}
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {/* Expanded Scripture Dropdown Menu */}
+              {isScriptureDropdownOpen && (
+                <View style={[styles.dropdownExpandedList, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
+                  {/* Action to Add New Verse */}
                   <TouchableOpacity
-                    key={preset.id}
-                    style={[
-                      styles.presetItem,
-                      {
-                        backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
-                        borderColor: isSelected ? colors.tint : colors.border,
-                      },
-                    ]}
-                    onPress={() => setSelectedPresetId(preset.id)}
+                    style={[styles.addNewVerseOptionBtn, { backgroundColor: colors.tintLight, borderColor: colors.tint }]}
+                    onPress={openAddNewVerseModal}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons
-                      name={isSelected ? 'radio-button-on' : 'radio-button-off'}
-                      size={18}
-                      color={isSelected ? colors.tint : colors.textSecondary}
-                      style={{ marginRight: 10 }}
-                    />
+                    <Ionicons name="add-circle" size={18} color={colors.tint} style={{ marginRight: 8 }} />
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.presetTitle, { color: isSelected ? colors.tint : colors.text }]}>
-                        {preset.name}
+                      <Text style={[styles.addNewVerseOptionTitle, { color: colors.tint }]}>
+                        Add New Custom Scripture Verse
                       </Text>
-                      <Text style={[styles.presetQuote, { color: colors.textSecondary }]} numberOfLines={2}>
-                        "{preset.text}"
+                      <Text style={[styles.addNewVerseOptionSub, { color: colors.textSecondary }]}>
+                        Pick from Bible or type your own personal verse
                       </Text>
                     </View>
                   </TouchableOpacity>
-                );
-              })}
 
-              {/* Interactive Bible Passage Picker (when 'bible_picker' is selected) */}
+                  {/* 1. Daily Verse of the Day Option */}
+                  <TouchableOpacity
+                    style={[
+                      styles.presetItem,
+                      {
+                        backgroundColor: selectedPresetId === 'daily' ? colors.tintLight : colors.glassInput,
+                        borderColor: selectedPresetId === 'daily' ? colors.tint : colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      setSelectedPresetId('daily');
+                      setIsScriptureDropdownOpen(false);
+                    }}
+                  >
+                    <Ionicons
+                      name={selectedPresetId === 'daily' ? 'radio-button-on' : 'radio-button-off'}
+                      size={18}
+                      color={selectedPresetId === 'daily' ? colors.tint : colors.textSecondary}
+                      style={{ marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.presetTitle, { color: selectedPresetId === 'daily' ? colors.tint : colors.text }]}>
+                        🌟 Daily Verse of the Day (Auto)
+                      </Text>
+                      <Text style={[styles.presetQuote, { color: colors.textSecondary }]} numberOfLines={2}>
+                        "Rotates automatically with God's fresh Word each day."
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* 2. Choose Any Verse from Holy Bible Option */}
+                  <TouchableOpacity
+                    style={[
+                      styles.presetItem,
+                      {
+                        backgroundColor: selectedPresetId === 'bible_picker' ? colors.tintLight : colors.glassInput,
+                        borderColor: selectedPresetId === 'bible_picker' ? colors.tint : colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      setSelectedPresetId('bible_picker');
+                    }}
+                  >
+                    <Ionicons
+                      name={selectedPresetId === 'bible_picker' ? 'radio-button-on' : 'radio-button-off'}
+                      size={18}
+                      color={selectedPresetId === 'bible_picker' ? colors.tint : colors.textSecondary}
+                      style={{ marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.presetTitle, { color: selectedPresetId === 'bible_picker' ? colors.tint : colors.text }]}>
+                        📖 Interactive Bible Passage Picker
+                      </Text>
+                      <Text style={[styles.presetQuote, { color: colors.textSecondary }]} numberOfLines={2}>
+                        "Choose any book, chapter, and verse from the Holy Bible."
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* 3. Type Custom Text Option */}
+                  <TouchableOpacity
+                    style={[
+                      styles.presetItem,
+                      {
+                        backgroundColor: selectedPresetId === 'custom_manual' ? colors.tintLight : colors.glassInput,
+                        borderColor: selectedPresetId === 'custom_manual' ? colors.tint : colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      setSelectedPresetId('custom_manual');
+                    }}
+                  >
+                    <Ionicons
+                      name={selectedPresetId === 'custom_manual' ? 'radio-button-on' : 'radio-button-off'}
+                      size={18}
+                      color={selectedPresetId === 'custom_manual' ? colors.tint : colors.textSecondary}
+                      style={{ marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.presetTitle, { color: selectedPresetId === 'custom_manual' ? colors.tint : colors.text }]}>
+                        ✍️ Type Custom Scripture Text
+                      </Text>
+                      <Text style={[styles.presetQuote, { color: colors.textSecondary }]} numberOfLines={2}>
+                        "Write or paste your custom prayer and scripture."
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* 4. List of Saved / User-Added Verses */}
+                  <View style={{ marginTop: 6, marginBottom: 4 }}>
+                    <Text style={[styles.dropdownSubheader, { color: colors.textSecondary }]}>
+                      SAVED & CUSTOM VERSES ({savedVerses.length})
+                    </Text>
+                  </View>
+
+                  {savedVerses.map((verseItem) => {
+                    const isSelected = selectedPresetId === verseItem.id;
+                    return (
+                      <TouchableOpacity
+                        key={verseItem.id}
+                        style={[
+                          styles.presetItem,
+                          {
+                            backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
+                            borderColor: isSelected ? colors.tint : colors.border,
+                          },
+                        ]}
+                        onPress={() => {
+                          setSelectedPresetId(verseItem.id);
+                          setCustomVerseCitation(verseItem.citation);
+                          setCustomVerseText(verseItem.text);
+                          if (verseItem.bookId) {
+                            setPickerBookId(verseItem.bookId);
+                            setPickerChapter(verseItem.chapter || 1);
+                            setPickerVerse(verseItem.verse || 1);
+                          }
+                          setIsScriptureDropdownOpen(false);
+                        }}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={18}
+                          color={isSelected ? colors.tint : colors.textSecondary}
+                          style={{ marginRight: 10 }}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Text style={[styles.presetTitle, { color: isSelected ? colors.tint : colors.text }]}>
+                              {verseItem.isCustomUserAdded ? '✨ ' : '🕊️ '}
+                              {verseItem.citation}
+                            </Text>
+                            {verseItem.isCustomUserAdded && (
+                              <TouchableOpacity
+                                onPress={() => handleDeleteCustomVerse(verseItem.id, verseItem.citation)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={{ padding: 2 }}
+                              >
+                                <Ionicons name="trash-outline" size={15} color="#FF3B30" />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          <Text style={[styles.presetQuote, { color: colors.textSecondary }]} numberOfLines={2}>
+                            "{verseItem.text}"
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Interactive Bible Passage Picker (when 'bible_picker' is active) */}
               {selectedPresetId === 'bible_picker' && (
-                <View style={[styles.biblePickerContainer, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
-                  {/* 1. Book Picker */}
+                <View style={[styles.biblePickerContainer, { backgroundColor: colors.glassCard, borderColor: colors.border, marginTop: 10 }]}>
                   <Text style={[styles.customFieldLabel, { color: colors.textSecondary }]}>1. SELECT BOOK</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScrollPills}>
                     {BIBLE_BOOKS.map((b) => {
@@ -961,9 +1418,9 @@ export default function AlarmScreen() {
                 </View>
               )}
 
-              {/* Custom Scripture Input (Visible when 'custom' is selected) */}
-              {selectedPresetId === 'custom' && (
-                <View style={[styles.customVerseContainer, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
+              {/* Custom Scripture Input (Visible when 'custom_manual' is active) */}
+              {selectedPresetId === 'custom_manual' && (
+                <View style={[styles.customVerseContainer, { backgroundColor: colors.glassCard, borderColor: colors.border, marginTop: 10 }]}>
                   <Text style={[styles.customFieldLabel, { color: colors.textSecondary }]}>SCRIPTURE CITATION</Text>
                   <TextInput
                     style={[styles.modalInput, { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border, marginBottom: 10 }]}
@@ -990,134 +1447,257 @@ export default function AlarmScreen() {
                 </View>
               )}
 
-              {/* 5. Ringtone & Music Selection */}
+              {/* 5. RINGTONE & MUSIC (COMPACT DROPDOWN) */}
               <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 16 }]}>
                 RINGTONE & MUSIC
               </Text>
 
-              {/* Built-in Ringtones */}
-              {BUILT_IN_RINGTONES.map((rt) => {
-                const isSelected = selectedRingtoneId === rt.id;
-                const isPlaying = previewingRingtoneId === rt.id;
+              {/* Ringtone Dropdown Header Card */}
+              <TouchableOpacity
+                style={[
+                  styles.dropdownHeaderCard,
+                  {
+                    backgroundColor: colors.glassCard,
+                    borderColor: isRingtoneDropdownOpen ? colors.tint : colors.border,
+                  },
+                ]}
+                onPress={() => setIsRingtoneDropdownOpen((prev) => !prev)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.dropdownHeaderTitle, { color: colors.tint }]}>
+                    {ringtoneSummary.title}
+                  </Text>
+                  <Text style={[styles.dropdownHeaderSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {ringtoneSummary.desc}
+                  </Text>
+                </View>
 
-                return (
-                  <TouchableOpacity
-                    key={rt.id}
-                    style={[
-                      styles.ringtoneItem,
-                      {
-                        backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
-                        borderColor: isSelected ? colors.tint : colors.border,
-                      },
-                    ]}
-                    onPress={() => setSelectedRingtoneId(rt.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={isSelected ? 'radio-button-on' : 'radio-button-off'}
-                      size={18}
-                      color={isSelected ? colors.tint : colors.textSecondary}
-                      style={{ marginRight: 10 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.ringtoneTitle, { color: isSelected ? colors.tint : colors.text }]}>
-                        {rt.title}
-                      </Text>
-                      <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
-                        {rt.description}
-                      </Text>
-                    </View>
-
-                    {/* Preview Play/Stop Button */}
-                    <TouchableOpacity
-                      style={[styles.previewAudioBtn, { backgroundColor: isPlaying ? colors.tint : colors.glassCard, borderColor: colors.border }]}
-                      onPress={() => handlePreviewRingtone(rt.id)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons
-                        name={isPlaying ? 'stop' : 'play'}
-                        size={14}
-                        color={isPlaying ? '#FFFFFF' : colors.tint}
-                      />
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                );
-              })}
-
-              {/* Custom Imported Music Item (if loaded) */}
-              {customAudioUri && (
-                <TouchableOpacity
-                  style={[
-                    styles.ringtoneItem,
-                    {
-                      backgroundColor: selectedRingtoneId === 'custom' ? colors.tintLight : colors.glassInput,
-                      borderColor: selectedRingtoneId === 'custom' ? colors.tint : colors.border,
-                    },
-                  ]}
-                  onPress={() => setSelectedRingtoneId('custom')}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={selectedRingtoneId === 'custom' ? 'radio-button-on' : 'radio-button-off'}
-                    size={18}
-                    color={selectedRingtoneId === 'custom' ? colors.tint : colors.textSecondary}
-                    style={{ marginRight: 10 }}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.ringtoneTitle, { color: selectedRingtoneId === 'custom' ? colors.tint : colors.text }]}>
-                      🎵 {customAudioName || 'Custom Imported Music'}
-                    </Text>
-                    <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
-                      Imported from your phone storage
-                    </Text>
-                  </View>
-
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {/* Play / Stop preview button directly on the collapsed header */}
                   <TouchableOpacity
                     style={[
                       styles.previewAudioBtn,
                       {
-                        backgroundColor: previewingRingtoneId === 'custom' ? colors.tint : colors.glassCard,
+                        backgroundColor: previewingRingtoneId === selectedRingtoneId ? colors.tint : colors.glassInput,
                         borderColor: colors.border,
-                        marginRight: 6,
                       },
                     ]}
-                    onPress={() => handlePreviewRingtone('custom', customAudioUri)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Ionicons
-                      name={previewingRingtoneId === 'custom' ? 'stop' : 'play'}
-                      size={14}
-                      color={previewingRingtoneId === 'custom' ? '#FFFFFF' : colors.tint}
-                    />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => {
-                      SoundService.stopPreview();
-                      setCustomAudioUri(undefined);
-                      setCustomAudioName(undefined);
-                      if (selectedRingtoneId === 'custom') {
-                        setSelectedRingtoneId('chimes');
-                      }
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handlePreviewRingtone(selectedRingtoneId, customAudioUri);
                     }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#FF3B30" />
+                    <Ionicons
+                      name={previewingRingtoneId === selectedRingtoneId ? 'stop' : 'play'}
+                      size={14}
+                      color={previewingRingtoneId === selectedRingtoneId ? '#FFFFFF' : colors.tint}
+                    />
                   </TouchableOpacity>
-                </TouchableOpacity>
+
+                  <View style={[styles.dropdownChevronCircle, { backgroundColor: colors.glassInput }]}>
+                    <Ionicons
+                      name={isRingtoneDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={colors.tint}
+                    />
+                  </View>
+                </View>
+              </TouchableOpacity>
+
+              {/* Expanded Ringtone Dropdown Menu */}
+              {isRingtoneDropdownOpen && (
+                <View style={[styles.dropdownExpandedList, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
+                  {/* Built-in Ringtones */}
+                  {BUILT_IN_RINGTONES.map((rt) => {
+                    const isSelected = selectedRingtoneId === rt.id;
+                    const isPlaying = previewingRingtoneId === rt.id;
+
+                    return (
+                      <TouchableOpacity
+                        key={rt.id}
+                        style={[
+                          styles.ringtoneItem,
+                          {
+                            backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
+                            borderColor: isSelected ? colors.tint : colors.border,
+                          },
+                        ]}
+                        onPress={() => {
+                          setSelectedRingtoneId(rt.id);
+                          setIsRingtoneDropdownOpen(false);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={18}
+                          color={isSelected ? colors.tint : colors.textSecondary}
+                          style={{ marginRight: 10 }}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.ringtoneTitle, { color: isSelected ? colors.tint : colors.text }]}>
+                            {rt.title}
+                          </Text>
+                          <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
+                            {rt.description}
+                          </Text>
+                        </View>
+
+                        {/* Preview Play/Stop Button */}
+                        <TouchableOpacity
+                          style={[
+                            styles.previewAudioBtn,
+                            { backgroundColor: isPlaying ? colors.tint : colors.glassCard, borderColor: colors.border },
+                          ]}
+                          onPress={() => handlePreviewRingtone(rt.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name={isPlaying ? 'stop' : 'play'}
+                            size={14}
+                            color={isPlaying ? '#FFFFFF' : colors.tint}
+                          />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  {/* Custom Imported Music Item (if loaded) */}
+                  {customAudioUri && (
+                    <TouchableOpacity
+                      style={[
+                        styles.ringtoneItem,
+                        {
+                          backgroundColor: selectedRingtoneId === 'custom' ? colors.tintLight : colors.glassInput,
+                          borderColor: selectedRingtoneId === 'custom' ? colors.tint : colors.border,
+                        },
+                      ]}
+                      onPress={() => {
+                        setSelectedRingtoneId('custom');
+                        setIsRingtoneDropdownOpen(false);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={selectedRingtoneId === 'custom' ? 'radio-button-on' : 'radio-button-off'}
+                        size={18}
+                        color={selectedRingtoneId === 'custom' ? colors.tint : colors.textSecondary}
+                        style={{ marginRight: 10 }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.ringtoneTitle, { color: selectedRingtoneId === 'custom' ? colors.tint : colors.text }]}>
+                          🎵 {customAudioName || 'Custom Imported Music'}
+                        </Text>
+                        <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
+                          Imported from your phone storage
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.previewAudioBtn,
+                          {
+                            backgroundColor: previewingRingtoneId === 'custom' ? colors.tint : colors.glassCard,
+                            borderColor: colors.border,
+                            marginRight: 6,
+                          },
+                        ]}
+                        onPress={() => handlePreviewRingtone('custom', customAudioUri)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons
+                          name={previewingRingtoneId === 'custom' ? 'stop' : 'play'}
+                          size={14}
+                          color={previewingRingtoneId === 'custom' ? '#FFFFFF' : colors.tint}
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          SoundService.stopPreview();
+                          setCustomAudioUri(undefined);
+                          setCustomAudioName(undefined);
+                          if (selectedRingtoneId === 'custom') {
+                            setSelectedRingtoneId('chimes');
+                          }
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#FF3B30" />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Import Custom Music Button */}
+                  <TouchableOpacity
+                    style={[styles.importMusicBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    onPress={handlePickCustomMusic}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="musical-notes-outline" size={18} color={colors.tint} style={{ marginRight: 8 }} />
+                    <Text style={[styles.importMusicBtnText, { color: colors.tint }]}>
+                      {customAudioUri ? 'Choose Different Song from Phone' : 'Import Custom Music / Song from Phone'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               )}
 
-              {/* Import Custom Music Button */}
-              <TouchableOpacity
-                style={[styles.importMusicBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                onPress={handlePickCustomMusic}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="musical-notes-outline" size={18} color={colors.tint} style={{ marginRight: 8 }} />
-                <Text style={[styles.importMusicBtnText, { color: colors.tint }]}>
-                  {customAudioUri ? 'Choose Different Song from Phone' : 'Import Custom Music / Song from Phone'}
-                </Text>
-              </TouchableOpacity>
+              {/* 6. Ring Duration (1 to 60 seconds) */}
+              <View style={{ marginTop: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginBottom: 0 }]}>
+                    ALARM DURATION (1–60 SECONDS)
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.tint }}>
+                    {alarmDurationSeconds} sec
+                  </Text>
+                </View>
+
+                <View style={styles.durationSelectorRow}>
+                  <TouchableOpacity
+                    onPress={() => setAlarmDurationSeconds((prev) => Math.max(1, prev - 1))}
+                    style={[styles.durationStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="remove" size={16} color={colors.text} />
+                  </TouchableOpacity>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.durationScroll}>
+                    {[1, 5, 10, 15, 20, 30, 45, 60].map((sec) => (
+                      <TouchableOpacity
+                        key={sec}
+                        onPress={() => setAlarmDurationSeconds(sec)}
+                        style={[
+                          styles.durationQuickPill,
+                          {
+                            backgroundColor: alarmDurationSeconds === sec ? colors.tint : colors.glassInput,
+                            borderColor: alarmDurationSeconds === sec ? colors.tint : colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.durationQuickPillText,
+                            { color: alarmDurationSeconds === sec ? '#FFFFFF' : colors.text },
+                          ]}
+                        >
+                          {sec}s
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  <TouchableOpacity
+                    onPress={() => setAlarmDurationSeconds((prev) => Math.min(60, prev + 1))}
+                    style={[styles.durationStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="add" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+              </View>
 
               {/* Save Button */}
               <TouchableOpacity
@@ -1128,6 +1708,234 @@ export default function AlarmScreen() {
                 <Text style={styles.saveAlarmBtnText}>
                   {editingAlarmId ? '💾 Save Alarm Changes' : '🔔 Create Spiritual Alarm'}
                 </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Sub-Modal: Add New Custom Scripture Verse */}
+      <Modal visible={addVerseModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.subModalSheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="sparkles" size={18} color={colors.tint} style={{ marginRight: 6 }} />
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Add New Scripture Verse</Text>
+              </View>
+              <TouchableOpacity onPress={() => setAddVerseModalVisible(false)}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {/* Tab Selector: Holy Bible Picker vs Custom Text */}
+              <View style={[styles.tabSelectorRow, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.tabBtn,
+                    addVerseMode === 'bible' && { backgroundColor: colors.tint, borderColor: colors.tint },
+                  ]}
+                  onPress={() => setAddVerseMode('bible')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="book"
+                    size={14}
+                    color={addVerseMode === 'bible' ? '#FFFFFF' : colors.textSecondary}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={[styles.tabBtnText, { color: addVerseMode === 'bible' ? '#FFFFFF' : colors.text }]}>
+                    Pick from Holy Bible
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.tabBtn,
+                    addVerseMode === 'custom' && { backgroundColor: colors.tint, borderColor: colors.tint },
+                  ]}
+                  onPress={() => setAddVerseMode('custom')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="create"
+                    size={14}
+                    color={addVerseMode === 'custom' ? '#FFFFFF' : colors.textSecondary}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={[styles.tabBtnText, { color: addVerseMode === 'custom' ? '#FFFFFF' : colors.text }]}>
+                    Type Custom Verse
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {addVerseMode === 'bible' ? (
+                <View style={[styles.biblePickerContainer, { backgroundColor: colors.glassCard, borderColor: colors.border, marginTop: 12 }]}>
+                  {/* 1. Book Picker */}
+                  <Text style={[styles.customFieldLabel, { color: colors.textSecondary }]}>1. SELECT BOOK</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScrollPills}>
+                    {BIBLE_BOOKS.map((b) => {
+                      const isSelected = newPickerBookId === b.id;
+                      return (
+                        <TouchableOpacity
+                          key={b.id}
+                          onPress={() => {
+                            setNewPickerBookId(b.id);
+                            setNewPickerChapter(1);
+                            setNewPickerVerse(1);
+                          }}
+                          style={[
+                            styles.bookPill,
+                            {
+                              backgroundColor: isSelected ? colors.tint : colors.glassInput,
+                              borderColor: isSelected ? colors.tint : colors.border,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.bookPillText, { color: isSelected ? '#FFFFFF' : colors.text }]}>
+                            {b.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* 2. Chapter Picker */}
+                  {(() => {
+                    const activeBook = BIBLE_BOOKS.find((b) => b.id === newPickerBookId) || BIBLE_BOOKS[0];
+                    const chapterCount = activeBook.chapters_count || 1;
+                    return (
+                      <>
+                        <Text style={[styles.customFieldLabel, { color: colors.textSecondary, marginTop: 10 }]}>
+                          2. SELECT CHAPTER (1 to {chapterCount})
+                        </Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScrollPills}>
+                          {Array.from({ length: chapterCount }, (_, i) => i + 1).map((ch) => {
+                            const isSelected = newPickerChapter === ch;
+                            return (
+                              <TouchableOpacity
+                                key={ch}
+                                onPress={() => {
+                                  setNewPickerChapter(ch);
+                                  setNewPickerVerse(1);
+                                }}
+                                style={[
+                                  styles.numberPill,
+                                  {
+                                    backgroundColor: isSelected ? colors.tint : colors.glassInput,
+                                    borderColor: isSelected ? colors.tint : colors.border,
+                                  },
+                                ]}
+                              >
+                                <Text style={[styles.numberPillText, { color: isSelected ? '#FFFFFF' : colors.text }]}>
+                                  {ch}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      </>
+                    );
+                  })()}
+
+                  {/* 3. Verse Picker */}
+                  <Text style={[styles.customFieldLabel, { color: colors.textSecondary, marginTop: 10 }]}>
+                    3. SELECT VERSE ({newPickerVersesList.length} Verses)
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScrollPills}>
+                    {newPickerVersesList.length > 0
+                      ? newPickerVersesList.map((v) => {
+                          const isSelected = newPickerVerse === v.verse;
+                          return (
+                            <TouchableOpacity
+                              key={v.verse}
+                              onPress={() => setNewPickerVerse(v.verse)}
+                              style={[
+                                styles.numberPill,
+                                {
+                                  backgroundColor: isSelected ? colors.tint : colors.glassInput,
+                                  borderColor: isSelected ? colors.tint : colors.border,
+                                },
+                              ]}
+                            >
+                              <Text style={[styles.numberPillText, { color: isSelected ? '#FFFFFF' : colors.text }]}>
+                                {v.verse}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })
+                      : Array.from({ length: 30 }, (_, i) => i + 1).map((v) => (
+                          <TouchableOpacity
+                            key={v}
+                            onPress={() => setNewPickerVerse(v)}
+                            style={[
+                              styles.numberPill,
+                              {
+                                backgroundColor: newPickerVerse === v ? colors.tint : colors.glassInput,
+                                borderColor: newPickerVerse === v ? colors.tint : colors.border,
+                              },
+                            ]}
+                          >
+                            <Text style={[styles.numberPillText, { color: newPickerVerse === v ? '#FFFFFF' : colors.text }]}>
+                              {v}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                  </ScrollView>
+
+                  {/* Preview */}
+                  <View style={[styles.pickedVersePreviewCard, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                      <Ionicons name="book" size={14} color={colors.tint} style={{ marginRight: 6 }} />
+                      <Text style={[styles.pickedVerseCitation, { color: colors.tint }]}>
+                        {newCustomCitation}
+                      </Text>
+                    </View>
+                    {newPickerLoading ? (
+                      <ActivityIndicator size="small" color={colors.tint} />
+                    ) : (
+                      <Text style={[styles.pickedVerseText, { color: colors.text }]}>
+                        "{newCustomText}"
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              ) : (
+                <View style={[styles.customVerseContainer, { backgroundColor: colors.glassCard, borderColor: colors.border, marginTop: 12 }]}>
+                  <Text style={[styles.customFieldLabel, { color: colors.textSecondary }]}>SCRIPTURE CITATION</Text>
+                  <TextInput
+                    style={[styles.modalInput, { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border, marginBottom: 10 }]}
+                    value={newCustomCitation}
+                    onChangeText={setNewCustomCitation}
+                    placeholder="e.g. Romans 8:28, Joshua 1:9..."
+                    placeholderTextColor={colors.textTertiary}
+                  />
+
+                  <Text style={[styles.customFieldLabel, { color: colors.textSecondary }]}>SCRIPTURE VERSE TEXT</Text>
+                  <TextInput
+                    style={[
+                      styles.modalInput,
+                      styles.customVerseTextInput,
+                      { color: colors.text, backgroundColor: colors.glassInput, borderColor: colors.border },
+                    ]}
+                    value={newCustomText}
+                    onChangeText={setNewCustomText}
+                    placeholder="Type or paste your customized verse..."
+                    placeholderTextColor={colors.textTertiary}
+                    multiline
+                    numberOfLines={4}
+                  />
+                </View>
+              )}
+
+              {/* Save Verse Button */}
+              <TouchableOpacity
+                style={[styles.saveAlarmBtn, { backgroundColor: colors.tint, marginTop: 16 }]}
+                onPress={handleSaveNewCustomVerse}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveAlarmBtnText}>✨ Save to My Verses & Select</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -1276,8 +2084,15 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
-    maxHeight: '88%',
-    paddingBottom: 30,
+    maxHeight: '90%',
+    paddingBottom: 20,
+  },
+  subModalSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    maxHeight: '85%',
+    paddingBottom: 20,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1301,11 +2116,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 8,
   },
+  // Tumbler Wheel Styles
   tumblerWheelContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 22,
     borderWidth: 1,
@@ -1313,55 +2129,60 @@ const styles = StyleSheet.create({
   },
   tumblerColumn: {
     alignItems: 'center',
-    width: 76,
+    width: 78,
   },
   tumblerArrowBtn: {
     width: 48,
-    height: 32,
-    borderRadius: 10,
+    height: 28,
+    borderRadius: 9,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 4,
+    marginVertical: 2,
   },
-  tumblerGhostItem: {
-    height: 30,
+  wheelWindow: {
+    height: TUMBLER_ITEM_HEIGHT * 3,
+    width: '100%',
+    position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 6,
+    overflow: 'hidden',
   },
-  tumblerGhostText: {
-    fontSize: 16,
-    fontWeight: '600',
-    opacity: 0.45,
+  wheelScrollView: {
+    width: '100%',
   },
-  tumblerCenterPill: {
-    width: 68,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1.5,
+  wheelItem: {
+    height: TUMBLER_ITEM_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  tumblerCenterText: {
+  wheelTextSelected: {
     fontSize: 26,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
+  wheelTextDimmed: {
+    fontSize: 16,
+    fontWeight: '600',
+    opacity: 0.4,
+  },
+  tumblerCenterHighlight: {
+    position: 'absolute',
+    top: TUMBLER_ITEM_HEIGHT,
+    left: 4,
+    right: 4,
+    height: TUMBLER_ITEM_HEIGHT,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
   tumblerColon: {
     fontSize: 28,
     fontWeight: '900',
-    marginHorizontal: 8,
+    marginHorizontal: 6,
     alignSelf: 'center',
   },
   tumblerPeriodColumn: {
-    marginLeft: 14,
+    marginLeft: 12,
     justifyContent: 'center',
     gap: 8,
   },
@@ -1382,8 +2203,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 4,
-    marginBottom: 12,
+    marginTop: 2,
+    marginBottom: 8,
   },
   quickMinBtn: {
     paddingHorizontal: 12,
@@ -1417,6 +2238,66 @@ const styles = StyleSheet.create({
   dayCircleText: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  // Dropdown Styles
+  dropdownHeaderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+  },
+  dropdownHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  dropdownHeaderSubtitle: {
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  dropdownChevronCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dropdownExpandedList: {
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  dropdownSubheader: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  addVerseHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addVerseHeaderBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  addNewVerseOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    marginBottom: 10,
+  },
+  addNewVerseOptionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  addNewVerseOptionSub: {
+    fontSize: 11,
   },
   presetItem: {
     flexDirection: 'row',
@@ -1480,7 +2361,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'dashed',
     marginTop: 4,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   importMusicBtnText: {
     fontSize: 13,
@@ -1611,5 +2492,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontStyle: 'italic',
+  },
+  tabSelectorRow: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 4,
+    marginTop: 6,
+  },
+  tabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  tabBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

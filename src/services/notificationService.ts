@@ -18,7 +18,7 @@ export const NotificationService = {
   /**
    * Requests permission and automatically registers the daily lock screen verse notification.
    */
-  async setupDailyLockscreenVerse(hour: number = 8, minute: number = 0): Promise<boolean> {
+  async setupDailyLockscreenVerse(hour: number = 6, minute: number = 0): Promise<boolean> {
     try {
       if (Platform.OS === 'web') return false;
 
@@ -51,7 +51,7 @@ export const NotificationService = {
       const book = BIBLE_BOOKS.find((b) => b.id === ref.bookId);
       const citation = `${book?.name || 'Scripture'} ${ref.chapter}:${ref.verse}`;
 
-      // 4. Schedule or replace recurring daily notification for phone lockscreen at 8:00 AM
+      // 4. Schedule or replace recurring daily notification for phone lockscreen at 6:00 AM
       await Notifications.scheduleNotificationAsync({
         identifier: 'daily-verse-of-day-notification',
         content: {

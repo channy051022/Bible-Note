@@ -425,7 +425,7 @@ export default function SettingsScreen() {
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <View style={styles.infoRow}>
           <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Developer</Text>
-          <Text style={[styles.infoValue, { color: colors.text }]}>Christian Faith Mestola</Text>
+          <Text style={[styles.infoValue, { color: colors.text }]}>Christian Faith Mestola - AsyncDev</Text>
         </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <View style={styles.infoRow}>
