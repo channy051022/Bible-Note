@@ -46,7 +46,7 @@ jobs:
 
       - name: Build iOS Release App (Ad-Hoc Signed for Sideloadly)
         run: |
-          set -o pipefail
+          echo "Starting xcodebuild..."
           xcodebuild -workspace ios/SHEPHERD.xcworkspace \
             -scheme SHEPHERD \
             -configuration Release \
@@ -65,7 +65,8 @@ jobs:
             ARCHS="arm64" \
             ONLY_ACTIVE_ARCH=NO \
             ENABLE_BITCODE=NO \
-            build 2>&1 | tee xcodebuild.log || (echo "=== XCODEBUILD FAILED - LAST 100 LINES ===" && tail -n 100 xcodebuild.log && exit 1)
+            build > xcodebuild.log 2>&1 || (echo "=== XCODEBUILD ERROR LOG ===" && tail -n 80 xcodebuild.log && exit 1)
+          echo "Build succeeded!"
 
       - name: Package .app into .ipa for Sideloadly
         run: |
