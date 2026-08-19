@@ -65,7 +65,7 @@ jobs:
             ARCHS="arm64" \
             ONLY_ACTIVE_ARCH=NO \
             ENABLE_BITCODE=NO \
-            build > xcodebuild.log 2>&1 || (echo "=== XCODEBUILD ERROR LOG ===" && tail -n 80 xcodebuild.log && exit 1)
+            build > xcodebuild.log 2>&1 || (echo "=== XCODEBUILD ERROR LOG ===" && grep -C 5 -E "(error:|fatal error:)" xcodebuild.log || tail -n 80 xcodebuild.log && exit 1)
           echo "Build succeeded!"
 
       - name: Package .app into .ipa for Sideloadly
