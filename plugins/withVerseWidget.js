@@ -1,4 +1,6 @@
-const { withEntitlementsPlist, withAndroidManifest } = require('@expo/config-plugins');
+const { withEntitlementsPlist, withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
 
 const withVerseWidget = (config) => {
   // 1. Configure iOS App Group Entitlements for shared WidgetKit storage
@@ -50,6 +52,44 @@ const withVerseWidget = (config) => {
 
     return config;
   });
+
+  // 3. Copy Android Widget Native Files (Kotlin, Layout XML, Info XML)
+  config = withDangerousMod(config, [
+    'android',
+    async (config) => {
+      const projectRoot = config.modRequest.projectRoot;
+      const platformRoot = config.modRequest.platformProjectRoot;
+
+      const widgetSrcDir = path.join(projectRoot, 'widgets', 'android');
+
+      // Target directories
+      const javaDir = path.join(platformRoot, 'app', 'src', 'main', 'java', 'com', 'biblenotes', 'app');
+      const layoutDir = path.join(platformRoot, 'app', 'src', 'main', 'res', 'layout');
+      const xmlDir = path.join(platformRoot, 'app', 'src', 'main', 'res', 'xml');
+
+      fs.mkdirSync(javaDir, { recursive: true });
+      fs.mkdirSync(layoutDir, { recursive: true });
+      fs.mkdirSync(xmlDir, { recursive: true });
+
+      // Copy files
+      const ktSrc = path.join(widgetSrcDir, 'VerseWidgetProvider.kt');
+      if (fs.existsSync(ktSrc)) {
+        fs.copyFileSync(ktSrc, path.join(javaDir, 'VerseWidgetProvider.kt'));
+      }
+
+      const layoutSrc = path.join(widgetSrcDir, 'verse_widget_layout.xml');
+      if (fs.existsSync(layoutSrc)) {
+        fs.copyFileSync(layoutSrc, path.join(layoutDir, 'verse_widget_layout.xml'));
+      }
+
+      const infoSrc = path.join(widgetSrcDir, 'verse_widget_info.xml');
+      if (fs.existsSync(infoSrc)) {
+        fs.copyFileSync(infoSrc, path.join(xmlDir, 'verse_widget_info.xml'));
+      }
+
+      return config;
+    },
+  ]);
 
   return config;
 };

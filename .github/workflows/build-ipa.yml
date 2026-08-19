@@ -39,6 +39,11 @@ jobs:
           cd ios
           pod install
 
+      - name: Patch MMKV for Xcode 16 Compatibility
+        run: |
+          find ios/Pods -name "AESCrypt.cpp" -exec sed -i '' '1s/^/#include <string.h>\n#define memset_s(dest, destsz, ch, count) memset(dest, ch, count)\n/' {} +
+          echo "Patched MMKVCore AESCrypt.cpp successfully"
+
       - name: Build unsigned iOS Release App
         run: |
           set -o pipefail
