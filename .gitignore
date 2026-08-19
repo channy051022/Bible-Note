@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 package-lock.json.bak
 
@@ -8,8 +8,8 @@ dist/
 web-build/
 
 # Native builds (Managed workflow generates these locally on run)
-ios/
-android/
+/ios/
+/android/
 
 # Environment Variables
 .env
