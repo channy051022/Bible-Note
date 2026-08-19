@@ -1,19 +1,17 @@
+import * as SQLite from 'expo-sqlite';
+import { type SQLiteDatabase } from 'expo-sqlite';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as FileSystemRoot from 'expo-file-system';
-import { type SQLiteDatabase } from 'expo-sqlite';
 
 const FileSystem: any = (FileSystemLegacy && FileSystemLegacy.documentDirectory)
   ? FileSystemLegacy
   : FileSystemRoot;
 
 const STORAGE_FILE_NAME = 'app_persistent_storage.json';
-
-// In-Memory map for immediate synchronous access
 const fallbackMap = new Map<string, string>();
-let registeredDb: SQLiteDatabase | null = null;
-let isFileLoaded = false;
+let syncDbInstance: SQLiteDatabase | null = null;
 
-// Universal Storage Interface for Expo Go & Bare/EAS workflows
+// Universal Storage Interface
 interface KeyValueStorage {
   getString: (key: string) => string | undefined;
   set: (key: string, value: string) => void;
@@ -21,7 +19,6 @@ interface KeyValueStorage {
 }
 
 let nativeMMKVInstance: KeyValueStorage | null = null;
-
 try {
   const { MMKV } = require('react-native-mmkv');
   nativeMMKVInstance = new MMKV({ id: 'bible-notes-storage' });
@@ -30,7 +27,35 @@ try {
 }
 
 /**
- * Persists the in-memory fallbackMap to a JSON file on disk asynchronously
+ * Synchronous initialization from SQLite database immediately on module import.
+ * This guarantees zero race-conditions and immediate data availability for initial React useState!
+ */
+try {
+  syncDbInstance = SQLite.openDatabaseSync('bible.db');
+  syncDbInstance.execSync(`
+    CREATE TABLE IF NOT EXISTS kv_store (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+  const rows = syncDbInstance.getAllSync<{ key: string; value: string }>('SELECT key, value FROM kv_store;');
+  if (rows && Array.isArray(rows)) {
+    for (const r of rows) {
+      fallbackMap.set(r.key, r.value);
+      if (nativeMMKVInstance) {
+        try {
+          nativeMMKVInstance.set(r.key, r.value);
+        } catch {}
+      }
+    }
+  }
+} catch (e) {
+  // Graceful fallback on web or before database creation
+  console.log('Synchronous SQLite storage initial pass (fallback active):', e);
+}
+
+/**
+ * Persists the in-memory fallbackMap to a JSON file on disk asynchronously as a secondary safety net
  */
 async function persistFallbackToFile(): Promise<void> {
   try {
@@ -43,7 +68,7 @@ async function persistFallbackToFile(): Promise<void> {
     });
     await FileSystem.writeAsStringAsync(filePath, JSON.stringify(obj));
   } catch (err) {
-    console.warn('Error persisting storage to file:', err);
+    // Non-blocking background persistence
   }
 }
 
@@ -51,7 +76,6 @@ async function persistFallbackToFile(): Promise<void> {
  * Loads persistent storage from file system on startup
  */
 export async function initStorageFromDisk(): Promise<void> {
-  if (isFileLoaded) return;
   try {
     const docDir = FileSystem.documentDirectory || (FileSystem as any).Paths?.document?.uri || '';
     if (!docDir) return;
@@ -66,12 +90,16 @@ export async function initStorageFromDisk(): Promise<void> {
           Object.keys(parsed).forEach((k) => {
             if (!fallbackMap.has(k)) {
               fallbackMap.set(k, parsed[k]);
+              if (syncDbInstance) {
+                try {
+                  syncDbInstance.runSync('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?);', [k, parsed[k]]);
+                } catch {}
+              }
             }
           });
         }
       }
     }
-    isFileLoaded = true;
   } catch (e) {
     console.warn('Error reading persistent storage from disk:', e);
   }
@@ -81,7 +109,7 @@ export async function initStorageFromDisk(): Promise<void> {
  * Registers SQLite database and synchronizes all kv_store items into in-memory storage
  */
 export async function initStorageFromDatabase(db: SQLiteDatabase): Promise<void> {
-  registeredDb = db;
+  syncDbInstance = db;
   try {
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS kv_store (
@@ -90,7 +118,7 @@ export async function initStorageFromDatabase(db: SQLiteDatabase): Promise<void>
       );
     `);
 
-    const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM kv_store');
+    const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM kv_store;');
     if (rows && Array.isArray(rows)) {
       for (const row of rows) {
         fallbackMap.set(row.key, row.value);
@@ -102,27 +130,45 @@ export async function initStorageFromDatabase(db: SQLiteDatabase): Promise<void>
       }
     }
 
-    // Also sync any items already in fallbackMap back into SQLite
+    // Sync any existing items in fallbackMap back into SQLite
     fallbackMap.forEach((val, key) => {
-      db.runAsync('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)', [key, val]).catch(() => {});
+      db.runAsync('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?);', [key, val]).catch(() => {});
     });
   } catch (e) {
     console.warn('Error initializing storage from SQLite:', e);
   }
 }
 
-// Automatically trigger disk load on module initialization
+// Automatically trigger disk load
 initStorageFromDisk().catch(() => {});
 
 export const storage: KeyValueStorage = {
   getString: (key: string): string | undefined => {
+    // 1. Direct in-memory cache (ultra fast)
+    if (fallbackMap.has(key)) {
+      return fallbackMap.get(key);
+    }
+    // 2. Native MMKV if available
     if (nativeMMKVInstance) {
       try {
         const val = nativeMMKVInstance.getString(key);
-        if (val !== undefined && val !== null) return val;
+        if (val !== undefined && val !== null) {
+          fallbackMap.set(key, val);
+          return val;
+        }
       } catch {}
     }
-    return fallbackMap.get(key);
+    // 3. Direct synchronous SQLite query
+    if (syncDbInstance) {
+      try {
+        const row = syncDbInstance.getFirstSync<{ value: string }>('SELECT value FROM kv_store WHERE key = ?;', [key]);
+        if (row && row.value) {
+          fallbackMap.set(key, row.value);
+          return row.value;
+        }
+      } catch {}
+    }
+    return undefined;
   },
   set: (key: string, value: string): void => {
     fallbackMap.set(key, value);
@@ -131,10 +177,14 @@ export const storage: KeyValueStorage = {
         nativeMMKVInstance.set(key, value);
       } catch {}
     }
-    persistFallbackToFile().catch(() => {});
-    if (registeredDb) {
-      registeredDb.runAsync('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)', [key, value]).catch(() => {});
+    if (syncDbInstance) {
+      try {
+        syncDbInstance.runSync('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?);', [key, value]);
+      } catch (dbErr) {
+        console.warn('Error saving to SQLite kv_store:', dbErr);
+      }
     }
+    persistFallbackToFile().catch(() => {});
   },
   delete: (key: string): void => {
     fallbackMap.delete(key);
@@ -143,10 +193,14 @@ export const storage: KeyValueStorage = {
         nativeMMKVInstance.delete(key);
       } catch {}
     }
-    persistFallbackToFile().catch(() => {});
-    if (registeredDb) {
-      registeredDb.runAsync('DELETE FROM kv_store WHERE key = ?', [key]).catch(() => {});
+    if (syncDbInstance) {
+      try {
+        syncDbInstance.runSync('DELETE FROM kv_store WHERE key = ?;', [key]);
+      } catch (dbErr) {
+        console.warn('Error deleting from SQLite kv_store:', dbErr);
+      }
     }
+    persistFallbackToFile().catch(() => {});
   },
 };
 

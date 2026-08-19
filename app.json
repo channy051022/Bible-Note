@@ -39,11 +39,35 @@
         "image": "./assets/icon.png",
         "resizeMode": "contain",
         "backgroundColor": "#121316"
-      }
+      },
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK",
+        "SCHEDULE_EXACT_ALARM",
+        "USE_EXACT_ALARM",
+        "USE_FULL_SCREEN_INTENT",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "plugins": [
       "expo-router",
-      "./plugins/withVerseWidget"
+      "./plugins/withVerseWidget",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#E5A93C",
+          "sounds": [
+            "./assets/spiritual_chimes.wav",
+            "./assets/radiant_sunrise_bell.wav",
+            "./assets/gospel_fanfare.wav",
+            "./assets/cathedral_bells.wav",
+            "./assets/morning_harp.wav",
+            "./assets/peaceful_piano.wav"
+          ]
+        }
+      ]
     ],
     "scheme": "biblenotes",
     "extra": {

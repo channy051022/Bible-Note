@@ -10,6 +10,7 @@ import { ThemeProvider, useTheme } from '../src/hooks/useTheme';
 import { NotificationService } from '../src/services/notificationService';
 import * as Notifications from 'expo-notifications';
 import { ActiveAlarmModal } from '../src/components/ActiveAlarmModal';
+import { initStorageFromDisk } from '../src/utils/storage';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -308,6 +309,7 @@ export default function RootLayout() {
         // Concurrently run database initialization and enforce a minimum 2-second loading duration
         await Promise.all([
           copyDatabaseFileIfNotExists(),
+          initStorageFromDisk(),
           minLoadDelay,
         ]);
 

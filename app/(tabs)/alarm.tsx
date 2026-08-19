@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   NativeScrollEvent,
   Platform,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -247,14 +248,18 @@ export default function AlarmScreen() {
     loadNewPickerVerses();
   }, [addVerseModalVisible, addVerseMode, newPickerBookId, newPickerChapter, newPickerVerse, db]);
 
-  // Load alarms on mount
-  useEffect(() => {
-    async function load() {
-      const data = await AlarmService.getAlarms();
-      setAlarms(data);
-    }
-    load();
-  }, []);
+  // Load alarms and saved custom verses on mount and on tab focus
+  useFocusEffect(
+    useCallback(() => {
+      async function load() {
+        const data = await AlarmService.getAlarms();
+        setAlarms(data);
+        const verses = getItem<CustomAlarmVerse[]>(CUSTOM_VERSES_STORAGE_KEY, DEFAULT_SAVED_VERSES);
+        setSavedVerses(verses);
+      }
+      load();
+    }, [])
+  );
 
   const handleToggleAlarm = async (id: string, isEnabled: boolean) => {
     const updated = await AlarmService.toggleAlarm(id, isEnabled);
