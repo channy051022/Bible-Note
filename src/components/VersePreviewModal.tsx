@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { PassageDetails } from '../types/bible';
 import { useTheme } from '../hooks/useTheme';
+import { StoryShareModal } from './StoryShareModal';
 
 interface VersePreviewModalProps {
   visible: boolean;
@@ -31,6 +32,7 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
   onInsertVerse,
 }) => {
   const { colors } = useTheme();
+  const [showStoryModal, setShowStoryModal] = React.useState<boolean>(false);
 
   if (!visible) return null;
 
@@ -105,26 +107,44 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
               {/* Footer Actions */}
               {passage && passage.verses.length > 0 && (
                 <View style={[styles.footer, { borderTopColor: colors.border }]}>
-                  {onInsertVerse && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {onInsertVerse && (
+                      <TouchableOpacity
+                        style={[styles.insertButton, { backgroundColor: colors.tint, flex: 1, marginRight: 8 }]}
+                        onPress={() => {
+                          onInsertVerse(passage);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="add-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                        <Text style={styles.insertButtonText}>Insert Note</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Share to FB Story Button */}
                     <TouchableOpacity
-                      style={[styles.insertButton, { backgroundColor: colors.tint }]}
-                      onPress={() => {
-                        onInsertVerse(passage);
-                      }}
+                      style={[
+                        styles.fbStoryButton,
+                        {
+                          backgroundColor: '#1877F2',
+                          flex: onInsertVerse ? 1 : 1,
+                        },
+                      ]}
+                      onPress={() => setShowStoryModal(true)}
                       activeOpacity={0.8}
                     >
-                      <Ionicons name="add-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                      <Text style={styles.insertButtonText}>Insert into Note</Text>
+                      <Ionicons name="logo-facebook" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <Text style={styles.fbStoryButtonText}>FB My Day</Text>
                     </TouchableOpacity>
-                  )}
+                  </View>
 
                   {onNavigateToReader && (
                     <TouchableOpacity
                       style={[
                         styles.readerButton,
                         {
-                          backgroundColor: onInsertVerse ? colors.secondaryBackground : colors.tint,
-                          marginTop: onInsertVerse ? 8 : 0,
+                          backgroundColor: colors.secondaryBackground,
+                          marginTop: 8,
                         },
                       ]}
                       onPress={() => {
@@ -136,15 +156,10 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
                       <Ionicons
                         name="open-outline"
                         size={16}
-                        color={onInsertVerse ? colors.text : '#FFFFFF'}
+                        color={colors.text}
                         style={{ marginRight: 6 }}
                       />
-                      <Text
-                        style={[
-                          styles.readerButtonText,
-                          { color: onInsertVerse ? colors.text : '#FFFFFF' },
-                        ]}
-                      >
+                      <Text style={[styles.readerButtonText, { color: colors.text }]}>
                         Open in Bible Reader
                       </Text>
                     </TouchableOpacity>
@@ -155,6 +170,16 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
+
+      {/* Story Share Modal for Previewed Passage */}
+      {passage && passage.verses.length > 0 && (
+        <StoryShareModal
+          visible={showStoryModal}
+          verseText={passage.verses.map((v) => `${v.verse}. ${v.text}`).join(' ')}
+          citation={passage.formattedTitle}
+          onClose={() => setShowStoryModal(false)}
+        />
+      )}
     </Modal>
   );
 };
@@ -276,5 +301,17 @@ const styles = StyleSheet.create({
   readerButtonText: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  fbStoryButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  fbStoryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

@@ -1,5 +1,5 @@
 export type Testament = 'OT' | 'NT';
-export type BibleVersion = 'KJV' | 'CEB';
+export type BibleVersion = string;
 
 export interface BibleVersionMeta {
   id: BibleVersion;
@@ -7,6 +7,11 @@ export interface BibleVersionMeta {
   shortName: string;
   language: string;
   description: string;
+  isPrebundled?: boolean;
+  category?: 'English' | 'Filipino' | 'Spanish' | 'European' | 'Asian' | 'Other';
+  fileSizeApprox?: string;
+  sourceUrl?: string;
+  totalVerses?: number;
 }
 
 export interface Book {

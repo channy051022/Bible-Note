@@ -28,6 +28,7 @@ import { getTodayVerseRef, DailyVerseRef } from '../../src/constants/VerseOfTheD
 import { ReadingPlan, ReadingPlanDay } from '../../src/types/plan';
 import { AnimatedMascot } from '../../src/components/AnimatedMascot';
 import { DailyPrayer, DEFAULT_DAILY_PRAYER, PRAYER_TEMPLATES } from '../../src/types/prayer';
+import { StoryShareModal } from '../../src/components/StoryShareModal';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function HomeScreen() {
   // Daily Verse state
   const [dailyVerse, setDailyVerse] = useState<{ book: Book; verse: Verse; citation: string } | null>(null);
   const [isLoadingDailyVerse, setIsLoadingDailyVerse] = useState<boolean>(true);
+  const [storyModalVisible, setStoryModalVisible] = useState<boolean>(false);
 
   // Continue Reading state
   const [lastReadBook, setLastReadBook] = useState<Book | null>(null);
@@ -279,21 +281,29 @@ export default function HomeScreen() {
             {/* Verse Action Buttons */}
             <View style={[styles.verseActionsRow, { borderTopColor: colors.border }]}>
               <TouchableOpacity
-                style={[styles.verseActionBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                onPress={handleReadDailyVerseChapter}
-                activeOpacity={0.7}
+                style={[styles.verseStoryShareBtn, { backgroundColor: '#1877F2' }]}
+                onPress={() => setStoryModalVisible(true)}
+                activeOpacity={0.8}
               >
-                <Ionicons name="book-outline" size={15} color={colors.text} style={{ marginRight: 5 }} />
-                <Text style={[styles.verseActionBtnText, { color: colors.text }]}>Read Chapter</Text>
+                <Ionicons name="logo-facebook" size={14} color="#FFFFFF" style={{ marginRight: 5 }} />
+                <Text style={styles.verseStoryShareBtnText}>FB My Day / Story</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.verseActionBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                onPress={handleReadDailyVerseChapter}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="book-outline" size={14} color={colors.text} style={{ marginRight: 5 }} />
+                <Text style={[styles.verseActionBtnText, { color: colors.text }]}>Read Chapter</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.verseActionIconButton, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
                 onPress={handleShareDailyVerse}
                 activeOpacity={0.7}
               >
-                <Ionicons name="share-social-outline" size={15} color={colors.text} style={{ marginRight: 5 }} />
-                <Text style={[styles.verseActionBtnText, { color: colors.text }]}>Share</Text>
+                <Ionicons name="share-social-outline" size={15} color={colors.text} />
               </TouchableOpacity>
             </View>
           </>
@@ -604,6 +614,18 @@ export default function HomeScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Facebook Story / My Day Sharing Studio Modal */}
+      {dailyVerse && (
+        <StoryShareModal
+          visible={storyModalVisible}
+          verseText={dailyVerse.verse.text}
+          citation={dailyVerse.citation}
+          version={activeVersion}
+          dateString={dateString}
+          onClose={() => setStoryModalVisible(false)}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -729,6 +751,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  verseStoryShareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  verseStoryShareBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   verseActionBtn: {
     flexDirection: 'row',

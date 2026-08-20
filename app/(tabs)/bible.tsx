@@ -12,6 +12,7 @@ import {
   Modal,
   ScrollView,
   TouchableWithoutFeedback,
+  Share,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +21,9 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { VerseItem } from '../../src/components/VerseItem';
 import { Verse, BibleSearchMatch, BibleVersion } from '../../src/types/bible';
 import { BibleRepo } from '../../src/db/bibleRepo';
-import { BIBLE_VERSIONS } from '../../src/constants/BibleVersions';
+import { ALL_BIBLE_VERSIONS } from '../../src/constants/BibleVersions';
+import { BibleDownloadService } from '../../src/services/bibleDownloadService';
+import { StoryShareModal } from '../../src/components/StoryShareModal';
 import { useSQLiteContext } from 'expo-sqlite';
 import { getItem, StorageKeys } from '../../src/utils/storage';
 
@@ -42,6 +45,7 @@ export default function EBibleScreen() {
 
   // Selected verse to display in reader modal
   const [readingVerse, setReadingVerse] = useState<Verse | null>(null);
+  const [storyVerse, setStoryVerse] = useState<Verse | null>(null);
   const [showVersionPicker, setShowVersionPicker] = useState<boolean>(false);
   const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false);
@@ -135,6 +139,17 @@ export default function EBibleScreen() {
         initialContent,
       },
     });
+  };
+
+  const handleShareVerseText = async (verse: Verse) => {
+    try {
+      const citation = `${currentBook?.name} ${chapter}:${verse.verse}`;
+      await Share.share({
+        message: `"${verse.text}"\n— ${citation} (${version})\n\nShared via Shepherd`,
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
   };
 
   const renderFooter = () => {
@@ -532,51 +547,71 @@ export default function EBibleScreen() {
                       </TouchableOpacity>
                     </View>
 
-                    {/* Action Buttons: Bookmark & Study Note */}
+                    {/* Action Buttons: Bookmark, Study Note, Share Text, FB My Day (Icons Only) */}
                     <View style={styles.modalActionButtonsRow}>
+                      {/* 1. Bookmark / Saved */}
                       <TouchableOpacity
                         style={[
-                          styles.modalActionBtn,
+                          styles.modalActionIconButton,
                           {
                             backgroundColor: bookmarks.has(readingVerse.verse)
                               ? colors.verseHighlight
-                              : colors.secondaryBackground,
+                              : colors.glassInput,
                             borderColor: bookmarks.has(readingVerse.verse) ? colors.gold : colors.border,
                           },
                         ]}
                         onPress={() => toggleBookmark(readingVerse.verse)}
+                        activeOpacity={0.7}
                       >
                         <Ionicons
                           name={bookmarks.has(readingVerse.verse) ? 'bookmark' : 'bookmark-outline'}
-                          size={18}
-                          color={bookmarks.has(readingVerse.verse) ? colors.gold : colors.textSecondary}
-                          style={{ marginRight: 6 }}
+                          size={20}
+                          color={bookmarks.has(readingVerse.verse) ? colors.gold : colors.text}
                         />
-                        <Text
-                          style={[
-                            styles.modalActionBtnText,
-                            {
-                              color: bookmarks.has(readingVerse.verse) ? colors.gold : colors.text,
-                              fontWeight: '600',
-                            },
-                          ]}
-                        >
-                          {bookmarks.has(readingVerse.verse) ? 'Bookmarked' : 'Bookmark'}
-                        </Text>
                       </TouchableOpacity>
 
+                      {/* 2. Study Note */}
                       <TouchableOpacity
-                        style={[styles.modalActionBtn, { backgroundColor: colors.tint, borderColor: colors.tint, marginLeft: 10 }]}
+                        style={[
+                          styles.modalActionIconButton,
+                          { backgroundColor: colors.glassInput, borderColor: colors.border },
+                        ]}
                         onPress={() => {
                           const v = readingVerse;
                           setReadingVerse(null);
                           handleAddNoteForVerse(v);
                         }}
+                        activeOpacity={0.7}
                       >
-                        <Ionicons name="create-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                        <Text style={[styles.modalActionBtnText, { color: '#FFFFFF', fontWeight: '700' }]}>
-                          Study Note
-                        </Text>
+                        <Ionicons name="create-outline" size={20} color={colors.text} />
+                      </TouchableOpacity>
+
+                      {/* 3. Share Verse Text Only */}
+                      <TouchableOpacity
+                        style={[
+                          styles.modalActionIconButton,
+                          { backgroundColor: colors.glassInput, borderColor: colors.border },
+                        ]}
+                        onPress={() => handleShareVerseText(readingVerse)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="share-social-outline" size={20} color={colors.text} />
+                      </TouchableOpacity>
+
+                      {/* 4. Share to FB My Day / Story */}
+                      <TouchableOpacity
+                        style={[
+                          styles.modalActionIconButton,
+                          { backgroundColor: '#1877F2', borderColor: '#1877F2' },
+                        ]}
+                        onPress={() => {
+                          const v = readingVerse;
+                          setReadingVerse(null);
+                          setStoryVerse(v);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="logo-facebook" size={20} color="#FFFFFF" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -615,72 +650,105 @@ export default function EBibleScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.versionList}>
-                  {BIBLE_VERSIONS.map((v) => {
-                    const isSelected = version === v.id;
-                    return (
-                      <TouchableOpacity
-                        key={v.id}
-                        style={[
-                          styles.versionOptionItem,
-                          {
-                            backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
-                            borderColor: isSelected ? colors.tint : colors.border,
-                          },
-                        ]}
-                        onPress={() => {
-                          setVersion(v.id);
-                          setShowVersionPicker(false);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.versionOptionTextContainer}>
-                          <View style={styles.versionOptionTitleRow}>
-                            <Text
-                              style={[
-                                styles.versionOptionTitle,
-                                {
-                                  color: isSelected ? colors.tint : colors.text,
-                                  fontWeight: isSelected ? '700' : '600',
-                                },
-                              ]}
-                            >
-                              {v.name} ({v.shortName})
-                            </Text>
-                            <View
-                              style={[
-                                styles.versionLangBadge,
-                                { backgroundColor: isSelected ? colors.tint : colors.border },
-                              ]}
-                            >
+                {/* Scrollable translation options */}
+                <ScrollView
+                  style={styles.versionScrollArea}
+                  contentContainerStyle={{ paddingBottom: 4 }}
+                  showsVerticalScrollIndicator={true}
+                >
+                  <View style={styles.versionList}>
+                    {ALL_BIBLE_VERSIONS.filter((v) => BibleDownloadService.isVersionDownloaded(v.id)).map((v) => {
+                      const isSelected = version === v.id;
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={[
+                            styles.versionOptionItem,
+                            {
+                              backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
+                              borderColor: isSelected ? colors.tint : colors.border,
+                            },
+                          ]}
+                          onPress={() => {
+                            setVersion(v.id);
+                            setShowVersionPicker(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.versionOptionTextContainer}>
+                            <View style={styles.versionOptionTitleRow}>
                               <Text
                                 style={[
-                                  styles.versionLangBadgeText,
-                                  { color: isSelected ? '#FFFFFF' : colors.textSecondary },
+                                  styles.versionOptionTitle,
+                                  {
+                                    color: isSelected ? colors.tint : colors.text,
+                                    fontWeight: isSelected ? '700' : '600',
+                                  },
                                 ]}
                               >
-                                {v.language}
+                                {v.name} ({v.shortName})
                               </Text>
+                              <View
+                                style={[
+                                  styles.versionLangBadge,
+                                  { backgroundColor: isSelected ? colors.tint : colors.border },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.versionLangBadgeText,
+                                    { color: isSelected ? '#FFFFFF' : colors.textSecondary },
+                                  ]}
+                                >
+                                  {v.language}
+                                </Text>
+                              </View>
                             </View>
+                            <Text style={[styles.versionOptionDesc, { color: colors.textSecondary }]}>
+                              {v.description}
+                            </Text>
                           </View>
-                          <Text style={[styles.versionOptionDesc, { color: colors.textSecondary }]}>
-                            {v.description}
-                          </Text>
-                        </View>
-                        {isSelected ? (
-                          <Ionicons name="checkmark-circle" size={22} color={colors.tint} />
-                        ) : (
-                          <Ionicons name="radio-button-off" size={20} color={colors.textTertiary} />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                          {isSelected ? (
+                            <Ionicons name="checkmark-circle" size={22} color={colors.tint} />
+                          ) : (
+                            <Ionicons name="radio-button-off" size={20} color={colors.textTertiary} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                {/* Shortcut to download more versions in Settings */}
+                <TouchableOpacity
+                  style={[styles.downloadMoreVersionsBtn, { borderTopColor: colors.border }]}
+                  onPress={() => {
+                    setShowVersionPicker(false);
+                    router.push('/settings');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="cloud-download-outline" size={16} color={colors.tint} style={{ marginRight: 6 }} />
+                  <Text style={[styles.downloadMoreVersionsText, { color: colors.tint }]}>
+                    Download More Bible Versions in Settings ➔
+                  </Text>
+                </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Facebook Story / My Day Sharing Modal for Reader Verse */}
+      {storyVerse && (
+        <StoryShareModal
+          visible={!!storyVerse}
+          verseText={storyVerse.text}
+          citation={`${currentBook?.name} ${chapter}:${storyVerse.verse}`}
+          version={version}
+          onClose={() => setStoryVerse(null)}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -982,6 +1050,17 @@ const styles = StyleSheet.create({
   modalActionButtonsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: -4,
+  },
+  modalActionIconButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
   },
   modalActionBtn: {
     flex: 1,
@@ -997,7 +1076,8 @@ const styles = StyleSheet.create({
   },
   versionModalCard: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 420,
+    maxHeight: '80%',
     borderRadius: 22,
     borderWidth: 1,
     overflow: 'hidden',
@@ -1007,8 +1087,14 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 16,
   },
+  versionScrollArea: {
+    flexGrow: 1,
+    flexShrink: 1,
+    maxHeight: 440,
+  },
   versionList: {
     padding: 16,
+    paddingBottom: 6,
   },
   versionOptionItem: {
     flexDirection: 'row',
@@ -1066,5 +1152,17 @@ const styles = StyleSheet.create({
   exitFullPageBtnText: {
     fontSize: 11,
     fontWeight: '800',
+  },
+  downloadMoreVersionsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  downloadMoreVersionsText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

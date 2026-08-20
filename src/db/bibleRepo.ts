@@ -15,6 +15,16 @@ export function cleanVerseText(raw: string): string {
     .trim();
 }
 
+/**
+ * Resolves the SQLite table name for a given translation version ID.
+ */
+export function getTableNameForVersion(version: BibleVersion = 'KJV'): string {
+  const normalized = (version || 'KJV').toUpperCase();
+  if (normalized === 'CEB') return 'bible_ceb';
+  if (normalized === 'KJV') return 'bible';
+  return `bible_${normalized.toLowerCase()}`;
+}
+
 export const BibleRepo = {
   /**
    * Retrieves all 66 books of the Bible.
@@ -41,10 +51,10 @@ export const BibleRepo = {
   ): Promise<Verse[]> {
     const book = getBookById(bookId) || BIBLE_BOOKS[0];
     const abbrev = book.abbreviation;
-    const tableName = version === 'CEB' ? 'bible_ceb' : 'bible';
+    const tableName = getTableNameForVersion(version);
 
     try {
-      // Query bible translation table (bible for KJV, bible_ceb for Cebuano)
+      // Query bible translation table (bible for KJV, bible_ceb for Cebuano, or bible_{ver})
       const rows = await db.getAllAsync<{
         book: string;
         chapter: number;
@@ -70,7 +80,7 @@ export const BibleRepo = {
       console.warn(`${tableName} query notice:`, e);
     }
 
-    // Fallback to default bible table if needed
+    // Fallback to default bible (KJV) table if needed
     try {
       const fallbackRows = await db.getAllAsync<{
         book: string;
@@ -117,7 +127,7 @@ export const BibleRepo = {
     const book = getBookById(bookId) || BIBLE_BOOKS[0];
     const abbrev = book.abbreviation;
     const end = endVerse ?? startVerse;
-    const tableName = version === 'CEB' ? 'bible_ceb' : 'bible';
+    const tableName = getTableNameForVersion(version);
 
     try {
       const rows = await db.getAllAsync<{
@@ -177,7 +187,7 @@ export const BibleRepo = {
     const matches: BibleSearchMatch[] = [];
     const seenIds = new Set<number>();
     const lowerQuery = cleanQuery.toLowerCase();
-    const tableName = version === 'CEB' ? 'bible_ceb' : 'bible';
+    const tableName = getTableNameForVersion(version);
 
     // 1. Search Bible Book Names & Aliases
     for (const book of BIBLE_BOOKS) {
@@ -269,7 +279,7 @@ export const BibleRepo = {
    * Retrieves all saved bookmarks.
    */
   async getBookmarks(db: SQLiteDatabase, version: BibleVersion = 'KJV'): Promise<Bookmark[]> {
-    const tableName = version === 'CEB' ? 'bible_ceb' : 'bible';
+    const tableName = getTableNameForVersion(version);
     try {
       const bookmarks = await db.getAllAsync<Bookmark>(
         'SELECT id, book_id, chapter, verse, label, created_at FROM bookmarks ORDER BY created_at DESC'

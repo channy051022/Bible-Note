@@ -275,6 +275,14 @@ function RootNavigationLayout() {
             title: 'Game Settings',
           }}
         />
+
+        <Stack.Screen
+          name="support"
+          options={{
+            headerShown: false,
+            title: 'Support Shepherd',
+          }}
+        />
       </Stack>
 
       {/* Global Full-Screen Spiritual Ringing Alarm Modal */}

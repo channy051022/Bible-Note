@@ -31,14 +31,20 @@ export function useBiblePassage(initialBookId: number = 1, initialChapter: numbe
   const loadPassage = useCallback(async () => {
     try {
       setIsLoading(true);
+      const savedVer = getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, version);
+      const activeVer = savedVer || version;
+      if (savedVer && savedVer !== version) {
+        setVersionState(savedVer);
+      }
+
       const book = getBookById(bookId) || (await BibleRepo.getBookById(db, bookId));
       setCurrentBook(book || null);
 
-      const chapterVerses = await BibleRepo.getChapterVerses(db, bookId, chapter, version);
+      const chapterVerses = await BibleRepo.getChapterVerses(db, bookId, chapter, activeVer);
       setVerses(chapterVerses);
 
       // Load bookmark statuses for this chapter
-      const allBookmarks = await BibleRepo.getBookmarks(db, version);
+      const allBookmarks = await BibleRepo.getBookmarks(db, activeVer);
       const chapterBookmarks = new Set<number>();
       allBookmarks.forEach((bm) => {
         if (bm.book_id === bookId && bm.chapter === chapter) {

@@ -1,23 +1,35 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
+  Alert,
   Linking,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useTheme, ThemeMode } from '../src/hooks/useTheme';
 import { getItem, setItem, StorageKeys } from '../src/utils/storage';
 import { BibleRepo } from '../src/db/bibleRepo';
 import { NotesRepo } from '../src/db/notesRepo';
-import { BibleVersion } from '../src/types/bible';
-import { BIBLE_VERSIONS } from '../src/constants/BibleVersions';
+import { BibleVersion, BibleVersionMeta } from '../src/types/bible';
+import {
+  ALL_BIBLE_VERSIONS,
+  PREBUNDLED_BIBLE_VERSIONS,
+  DOWNLOADABLE_BIBLE_VERSIONS,
+  getBibleVersionMeta,
+} from '../src/constants/BibleVersions';
+import { BibleDownloadService } from '../src/services/bibleDownloadService';
+import { THEME_PRESETS } from '../src/constants/ThemePresets';
+import { openShepherdMessenger } from '../src/constants/support';
 
-import { THEME_PRESETS, ThemePresetId } from '../src/constants/ThemePresets';
+type CategoryFilter = 'All' | 'English' | 'Filipino' | 'Spanish' | 'European' | 'Asian';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -30,6 +42,23 @@ export default function SettingsScreen() {
   const [version, setVersionState] = useState<BibleVersion>(() => {
     return getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
   });
+
+  // Downloaded versions state
+  const [downloadedVersionIds, setDownloadedVersionIds] = useState<string[]>(() => {
+    return BibleDownloadService.getDownloadedVersionIds();
+  });
+
+  // Active download state
+  const [downloadingVersionId, setDownloadingVersionId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0);
+  const [downloadStatusText, setDownloadStatusText] = useState<string>('');
+
+  // Search & Category Filters for Downloadable Versions
+  const [versionSearchQuery, setVersionSearchQuery] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('All');
+  const [isInstalledTranslationsExpanded, setIsInstalledTranslationsExpanded] = useState<boolean>(false);
+  const [isOnlineCatalogExpanded, setIsOnlineCatalogExpanded] = useState<boolean>(false);
+
   const [bookmarksCount, setBookmarksCount] = useState<number>(0);
   const [notesCount, setNotesCount] = useState<number>(0);
 
@@ -57,28 +86,114 @@ export default function SettingsScreen() {
   const handleUpdateVersion = (newVersion: BibleVersion) => {
     setVersionState(newVersion);
     setItem(StorageKeys.BIBLE_VERSION, newVersion);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  };
+
+  // Action: Download Bible Version from Online Repository
+  const handleDownloadVersion = async (meta: BibleVersionMeta) => {
+    if (downloadingVersionId) {
+      Alert.alert('Download in Progress', 'Please wait for the current translation download to finish.');
+      return;
+    }
+
+    try {
+      setDownloadingVersionId(meta.id);
+      setDownloadProgress(0.05);
+      setDownloadStatusText('Starting download...');
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      await BibleDownloadService.downloadBibleVersion(db, meta, (progress, statusText) => {
+        setDownloadProgress(progress);
+        setDownloadStatusText(statusText);
+      });
+
+      // Refresh downloaded versions list
+      const updatedList = BibleDownloadService.getDownloadedVersionIds();
+      setDownloadedVersionIds(updatedList);
+
+      // Auto-activate downloaded version
+      setVersionState(meta.id);
+      setItem(StorageKeys.BIBLE_VERSION, meta.id);
+
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Translation Ready! 🎉',
+        `${meta.name} (${meta.shortName}) has been downloaded successfully and is now your active Bible translation.`
+      );
+    } catch (err: any) {
+      console.error('Download version error:', err);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        'Download Failed',
+        err.message || 'Unable to download translation. Please verify your internet connection and try again.'
+      );
+    } finally {
+      setDownloadingVersionId(null);
+      setDownloadProgress(0);
+      setDownloadStatusText('');
+    }
+  };
+
+  // Action: Delete Downloaded Bible Version
+  const handleDeleteVersion = (meta: BibleVersionMeta) => {
+    Alert.alert(
+      'Remove Translation?',
+      `Are you sure you want to delete ${meta.name} (${meta.shortName}) from your offline database? You can download it again anytime.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await BibleDownloadService.deleteDownloadedVersion(db, meta.id);
+            const updated = BibleDownloadService.getDownloadedVersionIds();
+            setDownloadedVersionIds(updated);
+
+            if (version.toUpperCase() === meta.id.toUpperCase()) {
+              setVersionState('KJV');
+              setItem(StorageKeys.BIBLE_VERSION, 'KJV');
+            }
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          },
+        },
+      ]
+    );
   };
 
   const handleContactSupport = async () => {
-    const messengerUrl = 'https://m.me/christian.mestola.7';
-    const fbUrl = 'https://www.facebook.com/christian.mestola.7';
-    try {
-      const supported = await Linking.canOpenURL(messengerUrl);
-      if (supported) {
-        await Linking.openURL(messengerUrl);
-      } else {
-        await Linking.openURL(fbUrl);
-      }
-    } catch {
-      Linking.openURL(fbUrl);
-    }
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await openShepherdMessenger();
   };
+
+  // Filtered downloadable versions
+  const filteredDownloadableVersions = useMemo(() => {
+    return DOWNLOADABLE_BIBLE_VERSIONS.filter((v) => {
+      // Category filter
+      if (selectedCategory !== 'All' && v.category !== selectedCategory) {
+        return false;
+      }
+      // Search query filter
+      if (versionSearchQuery.trim()) {
+        const q = versionSearchQuery.trim().toLowerCase();
+        const matchesName = v.name.toLowerCase().includes(q);
+        const matchesShort = v.shortName.toLowerCase().includes(q);
+        const matchesLang = v.language.toLowerCase().includes(q);
+        const matchesDesc = v.description.toLowerCase().includes(q);
+        return matchesName || matchesShort || matchesLang || matchesDesc;
+      }
+      return true;
+    });
+  }, [selectedCategory, versionSearchQuery]);
 
   const themeModeOptions: { label: string; value: ThemeMode; icon: keyof typeof Ionicons.glyphMap }[] = [
     { label: 'Dark', value: 'dark', icon: 'moon-outline' },
     { label: 'Light', value: 'light', icon: 'sunny-outline' },
     { label: 'System', value: 'system', icon: 'phone-portrait-outline' },
   ];
+
+  const categoryOptions: CategoryFilter[] = ['All', 'English', 'Filipino', 'Spanish', 'European', 'Asian'];
+
+  const activeMeta = getBibleVersionMeta(version);
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
@@ -103,8 +218,13 @@ export default function SettingsScreen() {
           Choose Your Spiritual Color Palette
         </Text>
 
-        {/* 8 Theme Color Palettes */}
-        <View style={styles.themeGrid}>
+        {/* 8 Theme Color Palettes (Horizontal Scrolling) */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.themePaletteScroll}
+          contentContainerStyle={styles.themePaletteScrollContent}
+        >
           {THEME_PRESETS.map((p) => {
             const isSelected = preset === p.id;
             return (
@@ -122,7 +242,6 @@ export default function SettingsScreen() {
               >
                 <View style={styles.themeCardTop}>
                   <Text style={styles.themeIcon}>{p.icon}</Text>
-                  {/* Color Swatch Circles */}
                   <View style={styles.swatchRow}>
                     <View style={[styles.swatchCircle, { backgroundColor: p.primaryColor }]} />
                     <View style={[styles.swatchCircle, { backgroundColor: p.secondaryColor, marginLeft: -6 }]} />
@@ -153,7 +272,7 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
 
         {/* Base Appearance Mode */}
         <View style={[styles.divider, { backgroundColor: colors.border, marginVertical: 14 }]} />
@@ -197,60 +316,295 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Section 2: Bible Translation */}
+      {/* Section 2: Bible Translations Manager */}
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>BIBLE TRANSLATION</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>BIBLE TRANSLATIONS & DOWNLOADS</Text>
       </View>
       <View style={[styles.card, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
-        <Text style={[styles.settingLabel, { color: colors.text }]}>Preferred Translation</Text>
-        <View style={styles.versionSettingsList}>
-          {BIBLE_VERSIONS.map((v) => {
-            const isSelected = version === v.id;
-            return (
-              <TouchableOpacity
-                key={v.id}
-                style={[
-                  styles.versionSettingItem,
-                  {
-                    backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
-                    borderColor: isSelected ? colors.tint : colors.border,
-                  },
-                ]}
-                onPress={() => handleUpdateVersion(v.id)}
-                activeOpacity={0.7}
-              >
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+        {/* Active Translation Indicator */}
+        <View style={styles.activeTranslationBanner}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.activeTransPretitle, { color: colors.textSecondary }]}>CURRENTLY ACTIVE</Text>
+            <Text style={[styles.activeTransTitle, { color: colors.text }]}>
+              {activeMeta.name} ({activeMeta.shortName})
+            </Text>
+            <Text style={[styles.activeTransDesc, { color: colors.textSecondary }]} numberOfLines={1}>
+              {activeMeta.description}
+            </Text>
+          </View>
+          <View style={[styles.activeCheckPill, { backgroundColor: colors.tint }]}>
+            <Ionicons name="checkmark" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+            <Text style={styles.activeCheckText}>In Use</Text>
+          </View>
+        </View>
+
+        {/* 1. Installed / Offline Translations List (Collapsible Dropdown) */}
+        <View style={[styles.divider, { backgroundColor: colors.border, marginVertical: 14 }]} />
+        <TouchableOpacity
+          style={styles.rowBetween}
+          onPress={() => setIsInstalledTranslationsExpanded((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="library" size={18} color={colors.tint} style={{ marginRight: 8 }} />
+            <Text style={[styles.settingLabel, { color: colors.text, marginBottom: 0, fontSize: 13 }]}>
+              Installed Translations ({downloadedVersionIds.length})
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ fontSize: 11, color: colors.tint, fontWeight: '700', marginRight: 6 }}>100% Offline</Text>
+            <Ionicons
+              name={isInstalledTranslationsExpanded ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.textSecondary}
+            />
+          </View>
+        </TouchableOpacity>
+
+        {isInstalledTranslationsExpanded && (
+          <View style={[styles.versionSettingsList, { marginTop: 10 }]}>
+            {ALL_BIBLE_VERSIONS.filter((v) => BibleDownloadService.isVersionDownloaded(v.id)).map((v) => {
+              const isSelected = version.toUpperCase() === v.id.toUpperCase();
+              const isPrebundled = v.id === 'KJV' || v.id === 'CEB';
+
+              return (
+                <View
+                  key={v.id}
+                  style={[
+                    styles.versionSettingItem,
+                    {
+                      backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
+                      borderColor: isSelected ? colors.tint : colors.border,
+                    },
+                  ]}
+                >
+                  <TouchableOpacity
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                    onPress={() => handleUpdateVersion(v.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                        <Text
+                          style={[
+                            styles.versionSettingTitle,
+                            {
+                              color: isSelected ? colors.tint : colors.text,
+                              fontWeight: isSelected ? '700' : '600',
+                            },
+                          ]}
+                        >
+                          {v.name} ({v.shortName})
+                        </Text>
+                        <View style={[styles.langBadge, { backgroundColor: isSelected ? colors.tint : colors.border }]}>
+                          <Text style={[styles.langBadgeText, { color: isSelected ? '#FFFFFF' : colors.textSecondary }]}>
+                            {v.language}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.versionSettingDesc, { color: colors.textSecondary }]}>
+                        {v.description}
+                      </Text>
+                    </View>
+                    {isSelected ? (
+                      <Ionicons name="checkmark-circle" size={22} color={colors.tint} style={{ marginRight: 6 }} />
+                    ) : (
+                      <Ionicons name="radio-button-off" size={20} color={colors.textTertiary} style={{ marginRight: 6 }} />
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Delete button for user-downloaded translations */}
+                  {!isPrebundled && (
+                    <TouchableOpacity
+                      onPress={() => handleDeleteVersion(v)}
+                      style={[styles.deleteVersionBtn, { backgroundColor: 'rgba(255, 59, 48, 0.1)' }]}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={15} color="#FF3B30" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* 2. Available Online Translations Catalog */}
+        <View style={[styles.divider, { backgroundColor: colors.border, marginVertical: 14 }]} />
+        <TouchableOpacity
+          style={styles.rowBetween}
+          onPress={() => setIsOnlineCatalogExpanded((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="cloud-download" size={18} color={colors.tint} style={{ marginRight: 8 }} />
+            <Text style={[styles.settingLabel, { color: colors.text, marginBottom: 0, fontSize: 12 }]}>
+              Download More Translations ({DOWNLOADABLE_BIBLE_VERSIONS.length}+ Available)
+            </Text>
+          </View>
+          <Ionicons
+            name={isOnlineCatalogExpanded ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={colors.textSecondary}
+          />
+        </TouchableOpacity>
+
+        {isOnlineCatalogExpanded && (
+          <View style={{ marginTop: 12 }}>
+            {/* Search Input for Translations */}
+            <View style={[styles.searchBoxWrapper, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
+              <Ionicons name="search" size={16} color={colors.tint} style={{ marginRight: 8 }} />
+              <TextInput
+                style={[styles.searchBoxInput, { color: colors.text }]}
+                placeholder="Search translations (e.g., ASV, Tagalog, Spanish)..."
+                placeholderTextColor={colors.textTertiary}
+                value={versionSearchQuery}
+                onChangeText={setVersionSearchQuery}
+                clearButtonMode="while-editing"
+              />
+              {versionSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setVersionSearchQuery('')}>
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Language Category Filter Pills */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catFilterScroll}>
+              {categoryOptions.map((cat) => {
+                const isSelected = selectedCategory === cat;
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[
+                      styles.catFilterPill,
+                      {
+                        backgroundColor: isSelected ? colors.tint : colors.glassInput,
+                        borderColor: isSelected ? colors.tint : colors.border,
+                      },
+                    ]}
+                    onPress={() => setSelectedCategory(cat)}
+                  >
                     <Text
                       style={[
-                        styles.versionSettingTitle,
+                        styles.catFilterPillText,
+                        { color: isSelected ? '#FFFFFF' : colors.text, fontWeight: isSelected ? '700' : '500' },
+                      ]}
+                    >
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Active Download Progress Card */}
+            {downloadingVersionId && (
+              <View style={[styles.downloadProgressCard, { backgroundColor: colors.glassHighlight, borderColor: colors.tint }]}>
+                <View style={styles.downloadProgressHeader}>
+                  <ActivityIndicator size="small" color={colors.tint} style={{ marginRight: 8 }} />
+                  <Text style={[styles.downloadProgressTitle, { color: colors.tint }]}>
+                    {downloadStatusText}
+                  </Text>
+                  <Text style={[styles.downloadProgressPct, { color: colors.tint }]}>
+                    {Math.round(downloadProgress * 100)}%
+                  </Text>
+                </View>
+                <View style={[styles.downloadProgressBarBg, { backgroundColor: colors.glassInput }]}>
+                  <View style={[styles.downloadProgressBarFill, { width: `${downloadProgress * 100}%`, backgroundColor: colors.tint }]} />
+                </View>
+              </View>
+            )}
+
+            {/* List of Downloadable Translations */}
+            <View style={{ marginTop: 8 }}>
+              {filteredDownloadableVersions.length === 0 ? (
+                <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                  <Ionicons name="search-outline" size={32} color={colors.textTertiary} />
+                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 6 }}>
+                    No matching translations found for "{versionSearchQuery}"
+                  </Text>
+                </View>
+              ) : (
+                filteredDownloadableVersions.map((v) => {
+                  const isDownloaded = downloadedVersionIds.includes(v.id);
+                  const isCurrentlyDownloading = downloadingVersionId === v.id;
+                  const isActive = version.toUpperCase() === v.id.toUpperCase();
+
+                  return (
+                    <View
+                      key={v.id}
+                      style={[
+                        styles.downloadVersionCard,
                         {
-                          color: isSelected ? colors.tint : colors.text,
-                          fontWeight: isSelected ? '700' : '600',
+                          backgroundColor: isActive ? colors.tintLight : colors.glassInput,
+                          borderColor: isActive ? colors.tint : colors.border,
                         },
                       ]}
                     >
-                      {v.name} ({v.shortName})
-                    </Text>
-                    <View style={[styles.langBadge, { backgroundColor: isSelected ? colors.tint : colors.border }]}>
-                      <Text style={[styles.langBadgeText, { color: isSelected ? '#FFFFFF' : colors.textSecondary }]}>
-                        {v.language}
-                      </Text>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                          <Text
+                            style={[
+                              styles.versionSettingTitle,
+                              { color: isActive ? colors.tint : colors.text, fontWeight: '700' },
+                            ]}
+                          >
+                            {v.name} ({v.shortName})
+                          </Text>
+                          <View style={[styles.langBadge, { backgroundColor: colors.border }]}>
+                            <Text style={[styles.langBadgeText, { color: colors.textSecondary }]}>
+                              {v.language}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.versionSettingDesc, { color: colors.textSecondary }]} numberOfLines={2}>
+                          {v.description}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 4 }}>
+                          Download Size: {v.fileSizeApprox || '~5 MB'} • 31,102 Verses
+                        </Text>
+                      </View>
+
+                      {/* Download / Activate Action Button */}
+                      {isCurrentlyDownloading ? (
+                        <View style={[styles.actionBadge, { backgroundColor: colors.glassHighlight }]}>
+                          <ActivityIndicator size="small" color={colors.tint} />
+                        </View>
+                      ) : isDownloaded ? (
+                        <TouchableOpacity
+                          style={[styles.useDownloadedBtn, { backgroundColor: isActive ? colors.tint : colors.glassHighlight }]}
+                          onPress={() => handleUpdateVersion(v.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name={isActive ? 'checkmark-circle' : 'checkmark'}
+                            size={14}
+                            color={isActive ? '#FFFFFF' : colors.tint}
+                            style={{ marginRight: 4 }}
+                          />
+                          <Text style={[styles.useDownloadedBtnText, { color: isActive ? '#FFFFFF' : colors.tint }]}>
+                            {isActive ? 'In Use' : 'Use'}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.downloadBtn, { backgroundColor: colors.tint }]}
+                          onPress={() => handleDownloadVersion(v)}
+                          disabled={!!downloadingVersionId}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="download-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                          <Text style={styles.downloadBtnText}>Download</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
-                  </View>
-                  <Text style={[styles.versionSettingDesc, { color: colors.textSecondary }]}>
-                    {v.description}
-                  </Text>
-                </View>
-                {isSelected ? (
-                  <Ionicons name="checkmark-circle" size={22} color={colors.tint} />
-                ) : (
-                  <Ionicons name="radio-button-off" size={20} color={colors.textTertiary} />
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                  );
+                })
+              )}
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Section 3: Reader Typography */}
@@ -280,11 +634,15 @@ export default function SettingsScreen() {
         {/* Live Font Preview */}
         <View style={[styles.previewBox, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
           <Text style={[styles.previewLabel, { color: colors.tint }]}>
-            PREVIEW • {version === 'CEB' ? 'Juan 3:16 (Cebuano)' : 'John 3:16 (KJV)'}
+            PREVIEW • John 3:16 ({activeMeta.shortName})
           </Text>
           <Text style={[styles.previewText, { color: colors.text, fontSize, lineHeight: fontSize * 1.55 }]}>
-            {version === 'CEB'
+            {version === 'ADB'
+              ? "Sapagka't gayon na lamang ang pagsinta ng Dios sa sanglibutan, na ibinigay niya ang kaniyang bugtong na Anak, upang ang sinomang sa kaniya'y sumampalataya ay huwag mapahamak, kundi magkaroon ng buhay na walang hanggan."
+              : version === 'CEB'
               ? 'Kay gihigugma gayud sa Dios ang kalibutan nga tungod niana gihatag niya ang iyang bugtong Anak, aron ang tanan nga mosalig kaniya dili malaglag, kondili may kinabuhing dayon.'
+              : version === 'RV1960'
+              ? 'Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito, para que todo aquel que en él cree, no se pierda, mas tenga vida eterna.'
               : 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'}
           </Text>
         </View>
@@ -322,13 +680,13 @@ export default function SettingsScreen() {
       <View style={[styles.card, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
         <View style={styles.infoRow}>
           <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Available Translations</Text>
-          <Text style={[styles.infoValue, { color: colors.text }]}>KJV & Ceb</Text>
+          <Text style={[styles.infoValue, { color: colors.text }]}>{downloadedVersionIds.length} Installed ({ALL_BIBLE_VERSIONS.length}+ Online)</Text>
         </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <View style={styles.infoRow}>
           <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Active Translation</Text>
           <Text style={[styles.infoValue, { color: colors.tint, fontWeight: '700' }]}>
-            {version === 'CEB' ? 'Cebuano Pinadayag (CEB)' : 'King James Version (KJV)'}
+            {activeMeta.name} ({activeMeta.shortName})
           </Text>
         </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -343,11 +701,6 @@ export default function SettingsScreen() {
         </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Offline Scripture</Text>
-          <Text style={[styles.infoValue, { color: colors.text }]}>62,138 Verses (100% Offline)</Text>
-        </View>
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
-        <View style={styles.infoRow}>
           <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Database Storage</Text>
           <View style={styles.statusBadge}>
             <Ionicons name="checkmark-circle" size={14} color="#34C759" style={{ marginRight: 4 }} />
@@ -356,7 +709,7 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Section 4: Study Stats */}
+      {/* Section 6: Study Stats */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>YOUR STUDY STATS</Text>
       </View>
@@ -378,10 +731,12 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Section 5: Support & Contact Developer */}
+      {/* Section 7: Support & Contact Developer */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>SUPPORT & FEEDBACK</Text>
       </View>
+
+      {/* Contact Support */}
       <TouchableOpacity
         style={[styles.card, { backgroundColor: colors.glassCard, borderColor: colors.border }]}
         onPress={handleContactSupport}
@@ -413,7 +768,44 @@ export default function SettingsScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Section 6: App Info */}
+      {/* 🐑 Support Shepherd / GCash Donation Flow */}
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: colors.glassCard, borderColor: colors.border }]}
+        onPress={() => router.push('/support')}
+        activeOpacity={0.7}
+      >
+        <View style={styles.rowBetween}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: 'rgba(0, 199, 126, 0.12)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginRight: 12,
+              }}
+            >
+              <Text style={{ fontSize: 20 }}>🐑</Text>
+            </View>
+            <View style={{ flex: 1, paddingRight: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <Text style={[styles.settingLabel, { color: colors.text, marginBottom: 0 }]}>Support Shepherd</Text>
+                <View style={[styles.supportBadge, { backgroundColor: '#00C77E' }]}>
+                  <Text style={styles.supportBadgeText}>☕ Donate</Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 16 }}>
+                Shepherd is free and made to help you spend more time in God's Word. If you enjoy using Shepherd, you can support its development.
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+        </View>
+      </TouchableOpacity>
+
+      {/* Section 8: About */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>ABOUT</Text>
       </View>
@@ -563,6 +955,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  activeTranslationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  activeTransPretitle: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+  activeTransTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  activeTransDesc: {
+    fontSize: 12,
+  },
+  activeCheckPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  activeCheckText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
   versionSettingsList: {
     marginTop: 4,
   },
@@ -570,7 +993,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 14,
+    padding: 13,
     borderRadius: 14,
     borderWidth: 1.5,
     marginBottom: 8,
@@ -592,18 +1015,128 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
-  themeGrid: {
+  deleteVersionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  searchBoxWrapper: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  searchBoxInput: {
+    flex: 1,
+    fontSize: 13,
+    padding: 0,
+  },
+  catFilterScroll: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  catFilterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginRight: 6,
+  },
+  catFilterPillText: {
+    fontSize: 11,
+  },
+  downloadProgressCard: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  downloadProgressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginBottom: 8,
+  },
+  downloadProgressTitle: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  downloadProgressPct: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  downloadProgressBarBg: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  downloadProgressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  downloadVersionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  actionBadge: {
+    width: 76,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  useDownloadedBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  useDownloadedBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  downloadBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  themePaletteScroll: {
+    marginHorizontal: -4,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  themePaletteScrollContent: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   themePaletteCard: {
-    width: '48.5%',
-    borderRadius: 14,
+    width: 142,
+    borderRadius: 16,
     borderWidth: 1.5,
     padding: 12,
-    marginBottom: 10,
+    marginRight: 10,
     position: 'relative',
   },
   themeCardTop: {
@@ -642,5 +1175,16 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  supportBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  supportBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
 });

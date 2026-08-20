@@ -1,12 +1,15 @@
 import { BibleVersion, BibleVersionMeta } from '../types/bible';
 
-export const BIBLE_VERSIONS: BibleVersionMeta[] = [
+export const PREBUNDLED_BIBLE_VERSIONS: BibleVersionMeta[] = [
   {
     id: 'KJV',
     name: 'King James Version',
     shortName: 'KJV',
     language: 'English',
     description: 'Authorized King James Version (1769)',
+    isPrebundled: true,
+    category: 'English',
+    fileSizeApprox: '16.7 MB',
   },
   {
     id: 'CEB',
@@ -14,9 +17,400 @@ export const BIBLE_VERSIONS: BibleVersionMeta[] = [
     shortName: 'CEB',
     language: 'Cebuano',
     description: 'Cebuano Bugna / Pinadayag Translation',
+    isPrebundled: true,
+    category: 'Filipino',
+    fileSizeApprox: '6.5 MB',
   },
 ];
 
+export const DOWNLOADABLE_BIBLE_VERSIONS: BibleVersionMeta[] = [
+  // --- Filipino / Tagalog Translations ---
+  {
+    id: 'ADB',
+    name: 'Ang Dating Biblia (1905)',
+    shortName: 'ADB',
+    language: 'Tagalog / Filipino',
+    description: 'Ang Dating Biblia (1905) - Salin ng Philippine Bible Society sa Wikang Tagalog',
+    isPrebundled: false,
+    category: 'Filipino',
+    fileSizeApprox: '5.6 MB',
+    sourceUrl: 'https://api.getbible.net/v2/tagalog.json',
+  },
+
+  // --- English Translations ---
+  {
+    id: 'WEB',
+    name: 'World English Bible',
+    shortName: 'WEB',
+    language: 'English',
+    description: 'Modern, highly readable public-domain English translation',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.2 MB',
+    sourceUrl: 'https://bolls.life/static/translations/WEB.json',
+  },
+  {
+    id: 'ASV',
+    name: 'American Standard Version',
+    shortName: 'ASV',
+    language: 'English',
+    description: 'American Standard Version (1901) - Literal Translation',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.4 MB',
+    sourceUrl: 'https://bolls.life/static/translations/ASV.json',
+  },
+  {
+    id: 'YLT',
+    name: "Young's Literal Translation",
+    shortName: 'YLT',
+    language: 'English',
+    description: "Robert Young's strictly literal translation (1898)",
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.6 MB',
+    sourceUrl: 'https://bolls.life/static/translations/YLT.json',
+  },
+  {
+    id: 'BSB',
+    name: 'Berean Standard Bible',
+    shortName: 'BSB',
+    language: 'English',
+    description: 'The Holy Bible, Berean Standard Bible - Accurate & Readable',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.1 MB',
+    sourceUrl: 'https://bolls.life/static/translations/BSB.json',
+  },
+  {
+    id: 'DRB',
+    name: 'Douay-Rheims Bible',
+    shortName: 'DRB',
+    language: 'English',
+    description: 'Traditional Catholic English translation of Latin Vulgate',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.8 MB',
+    sourceUrl: 'https://bolls.life/static/translations/DRB.json',
+  },
+  {
+    id: 'GNV',
+    name: 'Geneva Bible',
+    shortName: 'GNV',
+    language: 'English',
+    description: 'Historical Geneva Bible (1599) used by Reformation leaders',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.5 MB',
+    sourceUrl: 'https://bolls.life/static/translations/GNV.json',
+  },
+  {
+    id: 'ESV',
+    name: 'English Standard Version',
+    shortName: 'ESV',
+    language: 'English',
+    description: 'English Standard Version (2001, 2016)',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.0 MB',
+    sourceUrl: 'https://bolls.life/static/translations/ESV.json',
+  },
+  {
+    id: 'NIV',
+    name: 'New International Version',
+    shortName: 'NIV',
+    language: 'English',
+    description: 'New International Version (Classic 1984 Edition)',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '4.9 MB',
+    sourceUrl: 'https://bolls.life/static/translations/NIV.json',
+  },
+  {
+    id: 'NKJV',
+    name: 'New King James Version',
+    shortName: 'NKJV',
+    language: 'English',
+    description: 'New King James Version (1982) - Preserved KJV Beauty',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.1 MB',
+    sourceUrl: 'https://bolls.life/static/translations/NKJV.json',
+  },
+  {
+    id: 'NLT',
+    name: 'New Living Translation',
+    shortName: 'NLT',
+    language: 'English',
+    description: 'New Living Translation (2015) - Warm, dynamic reading',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.0 MB',
+    sourceUrl: 'https://bolls.life/static/translations/NLT.json',
+  },
+  {
+    id: 'NASB',
+    name: 'New American Standard Bible',
+    shortName: 'NASB',
+    language: 'English',
+    description: 'NASB 1995 - Famous for Word-for-Word Study Accuracy',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.2 MB',
+    sourceUrl: 'https://bolls.life/static/translations/NASB.json',
+  },
+  {
+    id: 'NET',
+    name: 'New English Translation',
+    shortName: 'NET',
+    language: 'English',
+    description: 'NET Bible (2007) - Modern scholarship translation',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.3 MB',
+    sourceUrl: 'https://bolls.life/static/translations/NET.json',
+  },
+  {
+    id: 'AMP',
+    name: 'Amplified Bible',
+    shortName: 'AMP',
+    language: 'English',
+    description: 'Amplified Bible (2015) - Expanded nuance & meaning',
+    isPrebundled: false,
+    category: 'English',
+    fileSizeApprox: '5.7 MB',
+    sourceUrl: 'https://bolls.life/static/translations/AMP.json',
+  },
+
+  // --- Spanish / Español ---
+  {
+    id: 'RV1960',
+    name: 'Reina-Valera 1960',
+    shortName: 'RV60',
+    language: 'Español',
+    description: 'La versión más leída y amada en el mundo hispano',
+    isPrebundled: false,
+    category: 'Spanish',
+    fileSizeApprox: '5.3 MB',
+    sourceUrl: 'https://bolls.life/static/translations/RV1960.json',
+  },
+  {
+    id: 'RV2004',
+    name: 'Reina Valera Gómez',
+    shortName: 'RVG',
+    language: 'Español',
+    description: 'Reina Valera Gómez (2004) traducción fiel a textos originales',
+    isPrebundled: false,
+    category: 'Spanish',
+    fileSizeApprox: '5.2 MB',
+    sourceUrl: 'https://bolls.life/static/translations/RV2004.json',
+  },
+  {
+    id: 'BTX3',
+    name: 'La Biblia Textual',
+    shortName: 'BTX3',
+    language: 'Español',
+    description: 'La Biblia Textual 3ra Edición - Traducción crítica',
+    isPrebundled: false,
+    category: 'Spanish',
+    fileSizeApprox: '5.4 MB',
+    sourceUrl: 'https://bolls.life/static/translations/BTX3.json',
+  },
+  {
+    id: 'PDT',
+    name: 'Palabra de Dios para Todos',
+    shortName: 'PDT',
+    language: 'Español',
+    description: 'Lenguaje contemporáneo y fácil de comprender',
+    isPrebundled: false,
+    category: 'Spanish',
+    fileSizeApprox: '5.0 MB',
+    sourceUrl: 'https://bolls.life/static/translations/PDT.json',
+  },
+  {
+    id: 'NVI',
+    name: 'Nueva Versión Internacional',
+    shortName: 'NVI',
+    language: 'Español',
+    description: 'Nueva Versión Internacional (2015)',
+    isPrebundled: false,
+    category: 'Spanish',
+    fileSizeApprox: '5.1 MB',
+    sourceUrl: 'https://bolls.life/static/translations/NVI.json',
+  },
+
+  // --- Portuguese ---
+  {
+    id: 'ARA',
+    name: 'Almeida Revista e Atualizada',
+    shortName: 'ARA',
+    language: 'Português',
+    description: 'Almeida Revista e Atualizada (1993)',
+    isPrebundled: false,
+    category: 'European',
+    fileSizeApprox: '5.3 MB',
+    sourceUrl: 'https://bolls.life/static/translations/ARA.json',
+  },
+  {
+    id: 'ARC09',
+    name: 'Almeida Revista e Corrigida',
+    shortName: 'ARC',
+    language: 'Português',
+    description: 'Almeida Revista e Corrigida (2009)',
+    isPrebundled: false,
+    category: 'European',
+    fileSizeApprox: '5.2 MB',
+    sourceUrl: 'https://bolls.life/static/translations/ARC09.json',
+  },
+
+  // --- Indonesian ---
+  {
+    id: 'TB',
+    name: 'Terjemahan Baru',
+    shortName: 'TB',
+    language: 'Indonesian',
+    description: 'Alkitab Terjemahan Baru (LAI)',
+    isPrebundled: false,
+    category: 'Asian',
+    fileSizeApprox: '5.2 MB',
+    sourceUrl: 'https://bolls.life/static/translations/TB.json',
+  },
+
+  // --- French ---
+  {
+    id: 'FRLSG',
+    name: 'Bible Segond 1910',
+    shortName: 'LSG',
+    language: 'Français',
+    description: 'Traduction classique française de Louis Segond (1910)',
+    isPrebundled: false,
+    category: 'European',
+    fileSizeApprox: '5.4 MB',
+    sourceUrl: 'https://bolls.life/static/translations/FRLSG.json',
+  },
+
+  // --- German ---
+  {
+    id: 'LUT',
+    name: 'Luther Bibel (1912)',
+    shortName: 'LUT',
+    language: 'Deutsch',
+    description: 'Die Heilige Schrift nach der Übersetzung Martin Luthers',
+    isPrebundled: false,
+    category: 'European',
+    fileSizeApprox: '5.5 MB',
+    sourceUrl: 'https://bolls.life/static/translations/LUT.json',
+  },
+
+  // --- Chinese ---
+  {
+    id: 'CUV',
+    name: 'Chinese Union Traditional',
+    shortName: 'CUV',
+    language: 'Chinese (Traditional)',
+    description: '和合本聖經 (Traditional Chinese Characters)',
+    isPrebundled: false,
+    category: 'Asian',
+    fileSizeApprox: '5.0 MB',
+    sourceUrl: 'https://bolls.life/static/translations/CUV.json',
+  },
+  {
+    id: 'CUNPS',
+    name: 'Chinese Union Simplified',
+    shortName: 'CUNPS',
+    language: 'Chinese (Simplified)',
+    description: '新标点和合本 (Simplified Chinese Characters)',
+    isPrebundled: false,
+    category: 'Asian',
+    fileSizeApprox: '5.0 MB',
+    sourceUrl: 'https://bolls.life/static/translations/CUNPS.json',
+  },
+
+  // --- Korean ---
+  {
+    id: 'KRV',
+    name: 'Korean 개역한글',
+    shortName: 'KRV',
+    language: '한국어 (Korean)',
+    description: '개역한글 성경 (Korean Revised Version)',
+    isPrebundled: false,
+    category: 'Asian',
+    fileSizeApprox: '5.3 MB',
+    sourceUrl: 'https://bolls.life/static/translations/KRV.json',
+  },
+
+  // --- Vietnamese ---
+  {
+    id: 'VI1934',
+    name: 'Kinh Thánh (1934)',
+    shortName: 'VI34',
+    language: 'Tiếng Việt',
+    description: 'Bản dịch truyền thống Kinh Thánh tiếng Việt (1934)',
+    isPrebundled: false,
+    category: 'Asian',
+    fileSizeApprox: '5.2 MB',
+    sourceUrl: 'https://bolls.life/static/translations/VI1934.json',
+  },
+
+  // --- Ukrainian ---
+  {
+    id: 'UBIO',
+    name: 'Біблія Івана Огієнка (1962)',
+    shortName: 'UBIO',
+    language: 'Українська',
+    description: 'Канонічний український переклад професора Івана Огієнка',
+    isPrebundled: false,
+    category: 'European',
+    fileSizeApprox: '5.6 MB',
+    sourceUrl: 'https://bolls.life/static/translations/UBIO.json',
+  },
+
+  // --- Russian ---
+  {
+    id: 'SYNOD',
+    name: 'Синодальный Перевод',
+    shortName: 'SYNOD',
+    language: 'Русский',
+    description: 'Русская Синодальная Библия',
+    isPrebundled: false,
+    category: 'European',
+    fileSizeApprox: '5.5 MB',
+    sourceUrl: 'https://bolls.life/static/translations/SYNOD.json',
+  },
+
+  // --- Latin ---
+  {
+    id: 'VULG',
+    name: 'Biblia Sacra Vulgata',
+    shortName: 'VULG',
+    language: 'Latina',
+    description: 'Clementine Latin Vulgate - Historical Western scripture',
+    isPrebundled: false,
+    category: 'European',
+    fileSizeApprox: '5.6 MB',
+    sourceUrl: 'https://bolls.life/static/translations/VULG.json',
+  },
+];
+
+export const ALL_BIBLE_VERSIONS: BibleVersionMeta[] = [
+  ...PREBUNDLED_BIBLE_VERSIONS,
+  ...DOWNLOADABLE_BIBLE_VERSIONS,
+];
+
+// Default compatibility export
+export const BIBLE_VERSIONS = ALL_BIBLE_VERSIONS;
+
 export const getBibleVersionMeta = (versionId: BibleVersion): BibleVersionMeta => {
-  return BIBLE_VERSIONS.find((v) => v.id === versionId) || BIBLE_VERSIONS[0];
+  const normalized = (versionId || 'KJV').toUpperCase();
+  const found = ALL_BIBLE_VERSIONS.find((v) => v.id.toUpperCase() === normalized);
+  if (found) return found;
+
+  return {
+    id: versionId,
+    name: `${versionId} Translation`,
+    shortName: versionId,
+    language: 'Custom',
+    description: `Custom translation (${versionId})`,
+    isPrebundled: false,
+  };
 };
