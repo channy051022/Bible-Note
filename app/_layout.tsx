@@ -212,20 +212,11 @@ function RootNavigationLayout() {
         />
 
         <Stack.Screen
-          name="plans/create-custom"
-          options={{
-            presentation: 'modal',
-            headerShown: true,
-            title: 'Create Reading Plan',
-          }}
-        />
-
-        <Stack.Screen
           name="plan/new"
           options={{
             presentation: 'modal',
             headerShown: true,
-            title: 'Create Plan',
+            title: 'Create Reading Plan',
           }}
         />
 
