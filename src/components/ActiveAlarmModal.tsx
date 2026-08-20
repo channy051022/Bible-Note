@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SoundService } from '../services/soundService';
+import { AlarmService } from '../services/alarmService';
 
 interface ActiveAlarmModalProps {
   visible: boolean;
@@ -100,6 +101,7 @@ export const ActiveAlarmModal: React.FC<ActiveAlarmModalProps> = ({
 
   const handleDismiss = () => {
     SoundService.stopAlarmRingtone();
+    AlarmService.dismissActiveAlarm().catch(() => {});
     onDismiss();
   };
 
@@ -115,8 +117,22 @@ export const ActiveAlarmModal: React.FC<ActiveAlarmModalProps> = ({
   };
 
   const handleSnooze = () => {
-    handleDismiss();
-    Alert.alert('Alarm Snoozed ⏰', 'Alarm will ring again in 10 minutes with God\'s Word.');
+    SoundService.stopAlarmRingtone();
+    AlarmService.snoozeAlarm(
+      {
+        id: 'active_snooze',
+        label: 'Spiritual Alarm',
+        ringtoneId,
+        customAudioUri,
+        customText: verseText,
+        customCitation: citation,
+        bookId,
+        chapter,
+      },
+      5
+    ).catch(() => {});
+    onDismiss();
+    Alert.alert('Alarm Snoozed ⏰', 'Alarm will ring again in 5 minutes with God\'s Word.');
   };
 
   return (

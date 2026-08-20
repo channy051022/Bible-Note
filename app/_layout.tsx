@@ -9,6 +9,7 @@ import { DATABASE_NAME, copyDatabaseFileIfNotExists, initializeDatabase } from '
 import { ThemeProvider, useTheme } from '../src/hooks/useTheme';
 import { NotificationService } from '../src/services/notificationService';
 import { AlarmService } from '../src/services/alarmService';
+import { SoundService } from '../src/services/soundService';
 import * as Notifications from 'expo-notifications';
 import { Asset } from 'expo-asset';
 import { Image as ExpoImage } from 'expo-image';
@@ -107,6 +108,8 @@ function RootNavigationLayout() {
     // 2. Listen for notification response / user tap on lock screen or banner
     const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
       if (response && response.actionIdentifier === 'DISMISS_ALARM') {
+        SoundService.stopAlarmRingtone();
+        AlarmService.dismissActiveAlarm().catch(() => {});
         setActiveAlarm(null);
         return;
       }

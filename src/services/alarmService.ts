@@ -318,13 +318,14 @@ export const AlarmService = {
   },
 
   /**
-   * Schedules a delayed test alarm (e.g. 5 seconds) to test lockscreen wake-up behavior
+   * Schedules a delayed test alarm with consecutive waves (looping) to test lockscreen wake-up behavior
    */
   async scheduleTestAlarm(seconds: number = 5, alarm: SpiritualAlarm): Promise<void> {
     if (Platform.OS === 'web') return;
 
     try {
       await this.initNotificationChannels();
+      await this.dismissActiveAlarm();
 
       const ref = getTodayVerseRef();
       const book = BIBLE_BOOKS.find((b) => b.id === (alarm.bookId || ref.bookId));
@@ -337,41 +338,130 @@ export const AlarmService = {
       const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
       const soundFileName = ringtoneConf.soundFile;
 
-      await Notifications.scheduleNotificationAsync({
-        identifier: `test-alarm-${Date.now()}`,
-        content: {
-          title: `🔔 Spiritual Alarm Test • ${alarm.label}`,
-          body: `✝️ ${citation}\n"${verseBody}"`,
-          sound: soundFileName,
-          priority: Notifications.AndroidNotificationPriority.MAX,
-          vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
-          categoryIdentifier: 'spiritual_alarm',
-          color: '#E5A93C',
-          autoDismiss: false,
-          sticky: false,
-          data: {
-            alarmId: alarm.id,
-            timeString: timeFormatted,
-            citation,
-            text: verseBody,
-            bookId: alarm.bookId || ref.bookId,
-            chapter: alarm.chapter || ref.chapter,
-            ringtoneId: ringtoneKey,
-            customAudioUri: alarm.customAudioUri,
-            isSpiritualAlarm: true,
+      // Schedule 6 consecutive repeating waves (30s apart) so it loops continuously for 3+ minutes
+      const wavesCount = 6;
+      for (let wave = 0; wave < wavesCount; wave++) {
+        const triggerDelay = Math.max(1, seconds + wave * 30);
+        await Notifications.scheduleNotificationAsync({
+          identifier: `alarm-wave-${alarm.id}-${wave}`,
+          content: {
+            title: `🔔 Spiritual Alarm • ${alarm.label}`,
+            body: `✝️ ${citation}\n"${verseBody}"`,
+            sound: soundFileName,
+            priority: Notifications.AndroidNotificationPriority.MAX,
+            vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
+            categoryIdentifier: 'spiritual_alarm',
+            color: '#E5A93C',
+            autoDismiss: false,
+            sticky: false,
+            data: {
+              alarmId: alarm.id,
+              timeString: timeFormatted,
+              citation,
+              text: verseBody,
+              bookId: alarm.bookId || ref.bookId,
+              chapter: alarm.chapter || ref.chapter,
+              ringtoneId: ringtoneKey,
+              customAudioUri: alarm.customAudioUri,
+              isSpiritualAlarm: true,
+              waveIndex: wave,
+            },
+            interruptionLevel: 'timeSensitive',
           },
-          interruptionLevel: 'timeSensitive',
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: Math.max(1, seconds),
-          repeats: false,
-          channelId,
-        } as any,
-      });
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: triggerDelay,
+            repeats: false,
+            channelId,
+          } as any,
+        });
+      }
     } catch (e) {
       console.warn('Error scheduling test alarm:', e);
       throw e;
+    }
+  },
+
+  /**
+   * Snoozes an alarm for a given number of minutes (default 5 minutes) with continuous waves
+   */
+  async snoozeAlarm(alarm: { id: string; label: string; ringtoneId?: string; customAudioUri?: string; customText?: string; customCitation?: string; bookId?: number; chapter?: number }, snoozeMinutes: number = 5): Promise<void> {
+    if (Platform.OS === 'web') return;
+
+    try {
+      await this.dismissActiveAlarm();
+      const delaySeconds = Math.max(10, snoozeMinutes * 60);
+
+      const ref = getTodayVerseRef();
+      const book = BIBLE_BOOKS.find((b) => b.id === (alarm.bookId || ref.bookId));
+      const citation = alarm.customCitation || `${book?.name || 'Scripture'} ${ref.chapter}:${ref.verse}`;
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + snoozeMinutes);
+      const timeFormatted = AlarmService.formatTime(now.getHours(), now.getMinutes());
+      const verseBody = alarm.customText || 'The Lord is my shepherd; I shall not want.';
+
+      const ringtoneKey = alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'chimes';
+      const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.chimes;
+      const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
+      const soundFileName = ringtoneConf.soundFile;
+
+      const wavesCount = 6;
+      for (let wave = 0; wave < wavesCount; wave++) {
+        const triggerDelay = delaySeconds + wave * 30;
+        await Notifications.scheduleNotificationAsync({
+          identifier: `alarm-wave-snooze-${alarm.id}-${wave}`,
+          content: {
+            title: `🔔 Snoozed Alarm • ${alarm.label}`,
+            body: `✝️ ${citation}\n"${verseBody}"`,
+            sound: soundFileName,
+            priority: Notifications.AndroidNotificationPriority.MAX,
+            vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
+            categoryIdentifier: 'spiritual_alarm',
+            color: '#E5A93C',
+            autoDismiss: false,
+            sticky: false,
+            data: {
+              alarmId: alarm.id,
+              timeString: timeFormatted,
+              citation,
+              text: verseBody,
+              bookId: alarm.bookId || ref.bookId,
+              chapter: alarm.chapter || ref.chapter,
+              ringtoneId: ringtoneKey,
+              customAudioUri: alarm.customAudioUri,
+              isSpiritualAlarm: true,
+              waveIndex: wave,
+            },
+            interruptionLevel: 'timeSensitive',
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: triggerDelay,
+            repeats: false,
+            channelId,
+          } as any,
+        });
+      }
+    } catch (e) {
+      console.warn('Error scheduling snooze alarm:', e);
+    }
+  },
+
+  /**
+   * Dismisses all active alarm notifications and cancels pending alarm wave bursts
+   */
+  async dismissActiveAlarm(): Promise<void> {
+    if (Platform.OS === 'web') return;
+    try {
+      await Notifications.dismissAllNotificationsAsync();
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      for (const n of scheduled) {
+        if (n.identifier.startsWith('alarm-wave-') || n.identifier.startsWith('test-alarm-')) {
+          await Notifications.cancelScheduledNotificationAsync(n.identifier);
+        }
+      }
+    } catch (e) {
+      console.warn('Error dismissing active alarms:', e);
     }
   },
 

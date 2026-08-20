@@ -82,9 +82,15 @@ export const SoundService = {
             shouldPlay: true,
             isLooping: true,
             volume: 1.0,
+          },
+          (status) => {
+            if (status.isLoaded && status.didJustFinish) {
+              sound.replayAsync().catch(() => {});
+            }
           }
         );
         alarmSoundObject = sound;
+        await sound.setIsLoopingAsync(true);
         await sound.playAsync();
       } catch (assetErr) {
         console.warn('Initial alarm sound source failed, falling back to chimes:', assetErr);
@@ -95,9 +101,15 @@ export const SoundService = {
             shouldPlay: true,
             isLooping: true,
             volume: 1.0,
+          },
+          (status) => {
+            if (status.isLoaded && status.didJustFinish) {
+              sound.replayAsync().catch(() => {});
+            }
           }
         );
         alarmSoundObject = sound;
+        await sound.setIsLoopingAsync(true);
         await sound.playAsync();
       }
     } catch (e) {
