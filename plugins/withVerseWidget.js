@@ -67,11 +67,13 @@ const withVerseWidget = (config) => {
       const layoutDir = path.join(platformRoot, 'app', 'src', 'main', 'res', 'layout');
       const xmlDir = path.join(platformRoot, 'app', 'src', 'main', 'res', 'xml');
       const drawableDir = path.join(platformRoot, 'app', 'src', 'main', 'res', 'drawable');
+      const rawDir = path.join(platformRoot, 'app', 'src', 'main', 'res', 'raw');
 
       fs.mkdirSync(javaDir, { recursive: true });
       fs.mkdirSync(layoutDir, { recursive: true });
       fs.mkdirSync(xmlDir, { recursive: true });
       fs.mkdirSync(drawableDir, { recursive: true });
+      fs.mkdirSync(rawDir, { recursive: true });
 
       // Copy files
       const ktSrc = path.join(widgetSrcDir, 'VerseWidgetProvider.kt');
@@ -92,6 +94,15 @@ const withVerseWidget = (config) => {
       const drawableSrc = path.join(widgetSrcDir, 'widget_glass_bg.xml');
       if (fs.existsSync(drawableSrc)) {
         fs.copyFileSync(drawableSrc, path.join(drawableDir, 'widget_glass_bg.xml'));
+      }
+
+      // Copy alarm ringtone sound files from assets to res/raw
+      const assetsDir = path.join(projectRoot, 'assets');
+      if (fs.existsSync(assetsDir)) {
+        const soundFiles = fs.readdirSync(assetsDir).filter(f => f.endsWith('.wav'));
+        for (const sf of soundFiles) {
+          fs.copyFileSync(path.join(assetsDir, sf), path.join(rawDir, sf));
+        }
       }
 
       return config;

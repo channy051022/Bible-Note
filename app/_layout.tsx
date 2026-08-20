@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DATABASE_NAME, copyDatabaseFileIfNotExists, initializeDatabase } from '../src/db/init';
 import { ThemeProvider, useTheme } from '../src/hooks/useTheme';
 import { NotificationService } from '../src/services/notificationService';
+import { AlarmService } from '../src/services/alarmService';
 import * as Notifications from 'expo-notifications';
 import { Asset } from 'expo-asset';
 import { Image as ExpoImage } from 'expo-image';
@@ -67,6 +68,10 @@ function RootNavigationLayout() {
   useEffect(() => {
     // 0. Handle cold-start from tapping notification on lock screen or banner
     Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response && response.actionIdentifier === 'DISMISS_ALARM') {
+        setActiveAlarm(null);
+        return;
+      }
       if (response && response.notification?.request?.content?.data?.isSpiritualAlarm) {
         const data = response.notification.request.content.data;
         setActiveAlarm({
@@ -101,6 +106,10 @@ function RootNavigationLayout() {
 
     // 2. Listen for notification response / user tap on lock screen or banner
     const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (response && response.actionIdentifier === 'DISMISS_ALARM') {
+        setActiveAlarm(null);
+        return;
+      }
       const data = response.notification.request.content.data;
       if (data && data.isSpiritualAlarm) {
         setActiveAlarm({
@@ -329,8 +338,10 @@ export default function RootLayout() {
         ]);
 
         setIsDbReady(true);
-        // Automatically schedule daily morning Verse of the Day lockscreen notification
-        NotificationService.setupDailyLockscreenVerse(6, 0).catch(() => {});
+        // Automatically sync all alarms, notification channels, and daily verse
+        AlarmService.rescheduleAllAlarms().catch((alarmErr) => {
+          console.warn('Error rescheduling alarms on startup:', alarmErr);
+        });
       } catch (e) {
         console.error('Database file copy failed:', e);
         setError(e as Error);

@@ -26,7 +26,11 @@
         ]
       },
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "audio",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -64,7 +68,8 @@
             "./assets/gospel_fanfare.wav",
             "./assets/cathedral_bells.wav",
             "./assets/morning_harp.wav",
-            "./assets/peaceful_piano.wav"
+            "./assets/peaceful_piano.wav",
+            "./assets/spiritual_alarm.wav"
           ]
         }
       ]

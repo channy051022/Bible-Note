@@ -305,16 +305,48 @@ export default function AlarmScreen() {
       }
     }
 
-    setActiveAlarmData({
-      visible: true,
-      timeString: AlarmService.formatTime(alarm.hour, alarm.minute),
-      verseText,
-      citation,
-      bookId,
-      chapter,
-      ringtoneId: alarm.ringtoneId || 'chimes',
-      customAudioUri: alarm.customAudioUri,
-    });
+    Alert.alert(
+      'Test Spiritual Alarm ⏰',
+      'Choose how you would like to test this alarm:',
+      [
+        {
+          text: '📱 Test on Lock Screen (5s Delay)',
+          onPress: async () => {
+            try {
+              await AlarmService.scheduleTestAlarm(5, {
+                ...alarm,
+                customText: verseText,
+                customCitation: citation,
+                bookId,
+                chapter,
+              });
+              Alert.alert(
+                'Alarm Scheduled in 5 Seconds! 🔔',
+                '👉 Lock your phone screen or close the app right now!\n\nIn 5 seconds, your phone will ring and display the Scripture notification on your lock screen.'
+              );
+            } catch (err) {
+              Alert.alert('Error', 'Failed to schedule lock screen test alarm. Please ensure notification permissions are granted.');
+            }
+          },
+        },
+        {
+          text: '🔊 Ring Instantly (In-App)',
+          onPress: () => {
+            setActiveAlarmData({
+              visible: true,
+              timeString: AlarmService.formatTime(alarm.hour, alarm.minute),
+              verseText,
+              citation,
+              bookId,
+              chapter,
+              ringtoneId: alarm.ringtoneId || 'chimes',
+              customAudioUri: alarm.customAudioUri,
+            });
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   };
 
   const handlePreviewRingtone = async (ringtoneId: string, uri?: string) => {
@@ -666,6 +698,12 @@ export default function AlarmScreen() {
                 Wake up every morning greeted by God's Word & prayer.
               </Text>
             </View>
+          </View>
+          <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(229, 169, 60, 0.12)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, alignSelf: 'flex-start' }}>
+            <Ionicons name="flash" size={12} color="#E5A93C" style={{ marginRight: 5 }} />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#E5A93C' }}>
+              Screen-Off & Background Wake-Up Enabled
+            </Text>
           </View>
         </View>
 

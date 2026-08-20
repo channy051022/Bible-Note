@@ -7,18 +7,54 @@ import { BIBLE_BOOKS } from '../constants/BibleBooks';
 
 const ALARMS_STORAGE_KEY = 'SHEPHERD_SPIRITUAL_ALARMS';
 
-const DEFAULT_ALARMS: SpiritualAlarm[] = [];
+export interface RingtoneChannelConfig {
+  soundFile: string;
+  channelId: string;
+  channelName: string;
+}
+
+export const RINGTONE_SOUND_MAP: Record<string, RingtoneChannelConfig> = {
+  chimes: {
+    soundFile: 'spiritual_chimes.wav',
+    channelId: 'spiritual_alarm_chimes_v3',
+    channelName: 'Spiritual Alarms (Wake Chimes)',
+  },
+  sunrise_bell: {
+    soundFile: 'radiant_sunrise_bell.wav',
+    channelId: 'spiritual_alarm_sunrise_v3',
+    channelName: 'Spiritual Alarms (Sunrise Bells)',
+  },
+  fanfare: {
+    soundFile: 'gospel_fanfare.wav',
+    channelId: 'spiritual_alarm_fanfare_v3',
+    channelName: 'Spiritual Alarms (Joyful Fanfare)',
+  },
+  cathedral: {
+    soundFile: 'cathedral_bells.wav',
+    channelId: 'spiritual_alarm_cathedral_v3',
+    channelName: 'Spiritual Alarms (Cathedral Bells)',
+  },
+  harp: {
+    soundFile: 'morning_harp.wav',
+    channelId: 'spiritual_alarm_harp_v3',
+    channelName: 'Spiritual Alarms (Morning Harp)',
+  },
+  piano: {
+    soundFile: 'peaceful_piano.wav',
+    channelId: 'spiritual_alarm_piano_v3',
+    channelName: 'Spiritual Alarms (Peaceful Piano)',
+  },
+};
 
 export const AlarmService = {
   /**
-   * Loads all saved alarms (starts empty if no alarms have been created)
+   * Loads all saved alarms
    */
   async getAlarms(): Promise<SpiritualAlarm[]> {
     const saved = getItem<SpiritualAlarm[] | null>(ALARMS_STORAGE_KEY, null);
     if (!saved) {
       return [];
     }
-    // Filter out previously injected built-in default alarm IDs if user wants clean slate
     const filtered = saved.filter(
       (a) => a.id !== 'default-morning-alarm' && a.id !== 'default-evening-alarm'
     );
@@ -70,6 +106,87 @@ export const AlarmService = {
   },
 
   /**
+   * Ensures high-priority alarm notification channels & categories are registered
+   */
+  async initNotificationChannels() {
+    if (Platform.OS === 'web') return;
+
+    try {
+      // 1. Android Alarm Notification Channels
+      if (Platform.OS === 'android') {
+        const vibrationPattern = [0, 800, 400, 800, 400, 800, 400, 800];
+
+        // Register each ringtone's dedicated channel with ALARM audio attributes
+        for (const [, conf] of Object.entries(RINGTONE_SOUND_MAP)) {
+          await Notifications.setNotificationChannelAsync(conf.channelId, {
+            name: conf.channelName,
+            description: 'Spiritual wake-up alarm with God\'s Word and chime melodies',
+            importance: Notifications.AndroidImportance.MAX,
+            sound: conf.soundFile,
+            audioAttributes: {
+              usage: Notifications.AndroidAudioUsage.ALARM,
+              contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+              flags: {
+                enforceAudibility: true,
+                requestHardwareAudioVideoSynchronization: false,
+              },
+            },
+            vibrationPattern,
+            enableLights: true,
+            lightColor: '#E5A93C',
+            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+            bypassDnd: true,
+            showBadge: true,
+          });
+        }
+
+        // Daily verse background channel
+        await Notifications.setNotificationChannelAsync('daily_verse_channel_v3', {
+          name: 'Daily Verse of the Day',
+          description: 'Daily scripture inspiration notification',
+          importance: Notifications.AndroidImportance.DEFAULT,
+          sound: 'default',
+          enableLights: false,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        });
+      }
+
+      // 2. Notification Category for interactive lock screen actions
+      await Notifications.setNotificationCategoryAsync('spiritual_alarm', [
+        {
+          identifier: 'OPEN_VERSE',
+          buttonTitle: '📖 Read Scripture',
+          options: {
+            opensAppToForeground: true,
+          },
+        },
+        {
+          identifier: 'DISMISS_ALARM',
+          buttonTitle: 'Dismiss',
+          options: {
+            isDestructive: true,
+            opensAppToForeground: false,
+          },
+        },
+      ]);
+    } catch (e) {
+      console.warn('Error setting up notification channels & categories:', e);
+    }
+  },
+
+  /**
+   * Reschedules all saved alarms from disk (called on app startup)
+   */
+  async rescheduleAllAlarms(): Promise<void> {
+    try {
+      const alarms = await this.getAlarms();
+      await this.syncAllAlarmSchedules(alarms);
+    } catch (e) {
+      console.warn('Error during rescheduleAllAlarms:', e);
+    }
+  },
+
+  /**
    * Synchronizes active alarms with expo-notifications
    */
   async syncAllAlarmSchedules(alarms: SpiritualAlarm[]) {
@@ -85,31 +202,20 @@ export const AlarmService = {
             allowAlert: true,
             allowBadge: true,
             allowSound: true,
+            allowCriticalAlerts: true,
+            provideAppNotificationSettings: true,
           },
         });
         granted = req.granted || req.status === 'granted';
       }
 
-      // 2. Setup high-priority Android notification channel for alarms
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('spiritual_alarms_channel', {
-          name: 'Spiritual Alarms & Devotions',
-          description: 'Full-screen alarm notifications with scripture wake-up chimes',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 500, 500, 500, 500],
-          sound: 'default',
-          enableLights: true,
-          lightColor: '#E5A93C',
-          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-          bypassDnd: true,
-          showBadge: true,
-        });
-      }
+      // 2. Ensure channels are initialized
+      await this.initNotificationChannels();
 
       // 3. Cancel previously scheduled notifications
       await Notifications.cancelAllScheduledNotificationsAsync();
 
-      // 4. Re-ensure daily 6:00 AM lockscreen verse notification stays registered
+      // 4. Re-register daily 6:00 AM lockscreen verse notification
       try {
         const ref = getTodayVerseRef();
         const book = BIBLE_BOOKS.find((b) => b.id === ref.bookId);
@@ -127,7 +233,7 @@ export const AlarmService = {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour: 6,
             minute: 0,
-            channelId: 'daily_verse_channel',
+            channelId: Platform.OS === 'android' ? 'daily_verse_channel_v3' : undefined,
           } as any,
         });
       } catch (dailyErr) {
@@ -144,36 +250,128 @@ export const AlarmService = {
         const timeFormatted = AlarmService.formatTime(alarm.hour, alarm.minute);
         const verseBody = alarm.customText || 'The Lord is my shepherd; I shall not want.';
 
-        await Notifications.scheduleNotificationAsync({
-          identifier: `alarm-${alarm.id}`,
-          content: {
-            title: `🔔 ${timeFormatted} • ${alarm.label}`,
-            body: `✝️ ${citation}: "${verseBody}"`,
-            sound: 'default',
-            priority: Notifications.AndroidNotificationPriority.MAX,
-            categoryIdentifier: 'spiritual_alarm',
-            data: {
-              alarmId: alarm.id,
-              timeString: timeFormatted,
-              citation,
-              text: verseBody,
-              bookId: alarm.bookId || ref.bookId,
-              chapter: alarm.chapter || ref.chapter,
-              ringtoneId: alarm.ringtoneId || 'chimes',
-              customAudioUri: alarm.customAudioUri,
-              isSpiritualAlarm: true,
-            },
+        const ringtoneKey = alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'chimes';
+        const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.chimes;
+        const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
+        const soundFileName = ringtoneConf.soundFile;
+
+        const contentInput: Notifications.NotificationContentInput = {
+          title: `🔔 ${timeFormatted} • ${alarm.label}`,
+          body: `✝️ ${citation}\n"${verseBody}"`,
+          sound: soundFileName,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
+          categoryIdentifier: 'spiritual_alarm',
+          color: '#E5A93C',
+          autoDismiss: false,
+          sticky: false,
+          data: {
+            alarmId: alarm.id,
+            timeString: timeFormatted,
+            citation,
+            text: verseBody,
+            bookId: alarm.bookId || ref.bookId,
+            chapter: alarm.chapter || ref.chapter,
+            ringtoneId: ringtoneKey,
+            customAudioUri: alarm.customAudioUri,
+            isSpiritualAlarm: true,
           },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DAILY,
-            hour: alarm.hour,
-            minute: alarm.minute,
-            channelId: 'spiritual_alarms_channel',
-          } as any,
-        });
+          interruptionLevel: 'timeSensitive',
+        };
+
+        const days = alarm.days && alarm.days.length > 0 ? alarm.days : [0, 1, 2, 3, 4, 5, 6];
+
+        if (days.length === 7) {
+          // Every day -> Daily repeating trigger
+          await Notifications.scheduleNotificationAsync({
+            identifier: `alarm-${alarm.id}`,
+            content: contentInput,
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DAILY,
+              hour: alarm.hour,
+              minute: alarm.minute,
+              channelId,
+            } as any,
+          });
+        } else {
+          // Specific days of the week -> Weekly repeating trigger per selected day
+          for (const day of days) {
+            // In expo-notifications, 1 = Sunday, 2 = Monday, ..., 7 = Saturday
+            const weekday = day + 1;
+            await Notifications.scheduleNotificationAsync({
+              identifier: `alarm-${alarm.id}-day-${day}`,
+              content: contentInput,
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+                weekday,
+                hour: alarm.hour,
+                minute: alarm.minute,
+                channelId,
+              } as any,
+            });
+          }
+        }
       }
     } catch (e) {
       console.warn('Error syncing alarm schedules:', e);
+    }
+  },
+
+  /**
+   * Schedules a delayed test alarm (e.g. 5 seconds) to test lockscreen wake-up behavior
+   */
+  async scheduleTestAlarm(seconds: number = 5, alarm: SpiritualAlarm): Promise<void> {
+    if (Platform.OS === 'web') return;
+
+    try {
+      await this.initNotificationChannels();
+
+      const ref = getTodayVerseRef();
+      const book = BIBLE_BOOKS.find((b) => b.id === (alarm.bookId || ref.bookId));
+      const citation = alarm.customCitation || `${book?.name || 'Scripture'} ${ref.chapter}:${ref.verse}`;
+      const timeFormatted = AlarmService.formatTime(alarm.hour, alarm.minute);
+      const verseBody = alarm.customText || 'The Lord is my shepherd; I shall not want.';
+
+      const ringtoneKey = alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'chimes';
+      const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.chimes;
+      const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
+      const soundFileName = ringtoneConf.soundFile;
+
+      await Notifications.scheduleNotificationAsync({
+        identifier: `test-alarm-${Date.now()}`,
+        content: {
+          title: `🔔 Spiritual Alarm Test • ${alarm.label}`,
+          body: `✝️ ${citation}\n"${verseBody}"`,
+          sound: soundFileName,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
+          categoryIdentifier: 'spiritual_alarm',
+          color: '#E5A93C',
+          autoDismiss: false,
+          sticky: false,
+          data: {
+            alarmId: alarm.id,
+            timeString: timeFormatted,
+            citation,
+            text: verseBody,
+            bookId: alarm.bookId || ref.bookId,
+            chapter: alarm.chapter || ref.chapter,
+            ringtoneId: ringtoneKey,
+            customAudioUri: alarm.customAudioUri,
+            isSpiritualAlarm: true,
+          },
+          interruptionLevel: 'timeSensitive',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: Math.max(1, seconds),
+          repeats: false,
+          channelId,
+        } as any,
+      });
+    } catch (e) {
+      console.warn('Error scheduling test alarm:', e);
+      throw e;
     }
   },
 
