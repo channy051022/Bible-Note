@@ -240,54 +240,6 @@ function RootNavigationLayout() {
         />
 
         <Stack.Screen
-          name="game/index"
-          options={{
-            headerShown: false,
-            title: 'Bible Games Hub',
-          }}
-        />
-
-        <Stack.Screen
-          name="game/scramble"
-          options={{
-            headerShown: false,
-            title: 'Verse Scramble',
-          }}
-        />
-
-        <Stack.Screen
-          name="game/books-sort"
-          options={{
-            headerShown: false,
-            title: 'Book Sorter',
-          }}
-        />
-
-        <Stack.Screen
-          name="game/crossword"
-          options={{
-            headerShown: false,
-            title: 'Bible Crossword',
-          }}
-        />
-
-        <Stack.Screen
-          name="game/trivia"
-          options={{
-            headerShown: false,
-            title: 'Bible Trivia',
-          }}
-        />
-
-        <Stack.Screen
-          name="game/settings"
-          options={{
-            headerShown: false,
-            title: 'Game Settings',
-          }}
-        />
-
-        <Stack.Screen
           name="support"
           options={{
             headerShown: false,
