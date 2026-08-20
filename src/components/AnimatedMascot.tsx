@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Image, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 
 interface AnimatedMascotProps {
   width?: number;
@@ -23,7 +24,12 @@ export const AnimatedMascot: React.FC<AnimatedMascotProps> = ({
       <Image
         source={require('../../assets/mascot.gif')}
         style={styles.image}
-        resizeMode="contain"
+        contentFit="contain"
+        priority="high"
+        cachePolicy="memory-disk"
+        autoplay={true}
+        transition={0}
+        recyclingKey="shepherd_mascot_gif"
       />
     </View>
   );

@@ -9,6 +9,8 @@ import { DATABASE_NAME, copyDatabaseFileIfNotExists, initializeDatabase } from '
 import { ThemeProvider, useTheme } from '../src/hooks/useTheme';
 import { NotificationService } from '../src/services/notificationService';
 import * as Notifications from 'expo-notifications';
+import { Asset } from 'expo-asset';
+import { Image as ExpoImage } from 'expo-image';
 import { ActiveAlarmModal } from '../src/components/ActiveAlarmModal';
 import { initStorageFromDisk } from '../src/utils/storage';
 
@@ -314,10 +316,15 @@ export default function RootLayout() {
         // Dismiss the static OS splash screen right away so our custom AppLoadingScreen is displayed
         await SplashScreen.hideAsync().catch(() => {});
 
-        // Concurrently run database initialization and enforce a minimum 2-second loading duration
+        // Concurrently run database initialization, asset preloading, and enforce a minimum 2-second loading duration
         await Promise.all([
           copyDatabaseFileIfNotExists(),
           initStorageFromDisk(),
+          Asset.loadAsync([
+            require('../assets/mascot.gif'),
+            require('../assets/icon.png'),
+          ]).catch(() => {}),
+          ExpoImage.prefetch(require('../assets/mascot.gif')).catch(() => {}),
           minLoadDelay,
         ]);
 
