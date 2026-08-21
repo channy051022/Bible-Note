@@ -1,5 +1,11 @@
 import * as Notifications from 'expo-notifications';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
+import * as FileSystemRoot from 'expo-file-system';
 import { Platform } from 'react-native';
+
+const FileSystem: any = (FileSystemLegacy && FileSystemLegacy.documentDirectory)
+  ? FileSystemLegacy
+  : FileSystemRoot;
 import { SpiritualAlarm } from '../types/alarm';
 import { getItem, setItem } from '../utils/storage';
 import { getTodayVerseRef } from '../constants/VerseOfTheDay';
@@ -17,47 +23,47 @@ export interface RingtoneChannelConfig {
 export const RINGTONE_SOUND_MAP: Record<string, RingtoneChannelConfig> = {
   classic_bell: {
     soundFile: 'classic_phone_bell.wav',
-    channelId: 'spiritual_alarm_classic_bell_v4',
+    channelId: 'spiritual_alarm_classic_bell_v5',
     channelName: 'Spiritual Alarms (Classic Phone Bell)',
   },
   digital_alarm: {
     soundFile: 'digital_alarm_beeps.wav',
-    channelId: 'spiritual_alarm_digital_v4',
+    channelId: 'spiritual_alarm_digital_v5',
     channelName: 'Spiritual Alarms (Digital Clock Beeps)',
   },
   marimba: {
     soundFile: 'modern_marimba.wav',
-    channelId: 'spiritual_alarm_marimba_v4',
+    channelId: 'spiritual_alarm_marimba_v5',
     channelName: 'Spiritual Alarms (Modern Marimba)',
   },
   chimes: {
     soundFile: 'spiritual_chimes.wav',
-    channelId: 'spiritual_alarm_chimes_v4',
+    channelId: 'spiritual_alarm_chimes_v5',
     channelName: 'Spiritual Alarms (Wake Chimes)',
   },
   sunrise_bell: {
     soundFile: 'radiant_sunrise_bell.wav',
-    channelId: 'spiritual_alarm_sunrise_v4',
+    channelId: 'spiritual_alarm_sunrise_v5',
     channelName: 'Spiritual Alarms (Sunrise Bells)',
   },
   fanfare: {
     soundFile: 'gospel_fanfare.wav',
-    channelId: 'spiritual_alarm_fanfare_v4',
+    channelId: 'spiritual_alarm_fanfare_v5',
     channelName: 'Spiritual Alarms (Joyful Fanfare)',
   },
   cathedral: {
     soundFile: 'cathedral_bells.wav',
-    channelId: 'spiritual_alarm_cathedral_v4',
+    channelId: 'spiritual_alarm_cathedral_v5',
     channelName: 'Spiritual Alarms (Cathedral Bells)',
   },
   harp: {
     soundFile: 'morning_harp.wav',
-    channelId: 'spiritual_alarm_harp_v4',
+    channelId: 'spiritual_alarm_harp_v5',
     channelName: 'Spiritual Alarms (Morning Harp)',
   },
   piano: {
     soundFile: 'peaceful_piano.wav',
-    channelId: 'spiritual_alarm_piano_v4',
+    channelId: 'spiritual_alarm_piano_v5',
     channelName: 'Spiritual Alarms (Peaceful Piano)',
   },
 };
@@ -160,6 +166,19 @@ export const AlarmService = {
       if (Platform.OS === 'android') {
         const vibrationPattern = [0, 800, 400, 800, 400, 800, 400, 800];
 
+        // Clean up any old channels from previous versions
+        try {
+          const existingChannels = await Notifications.getNotificationChannelsAsync();
+          for (const ch of existingChannels) {
+            if (
+              ch.id.startsWith('spiritual_alarm_') &&
+              !ch.id.endsWith('_v5')
+            ) {
+              await Notifications.deleteNotificationChannelAsync(ch.id).catch(() => {});
+            }
+          }
+        } catch {}
+
         // Register each ringtone's dedicated channel with ALARM audio attributes and maximum importance
         for (const [, conf] of Object.entries(RINGTONE_SOUND_MAP)) {
           await Notifications.setNotificationChannelAsync(conf.channelId, {
@@ -186,7 +205,7 @@ export const AlarmService = {
         }
 
         // Daily verse background channel
-        await Notifications.setNotificationChannelAsync('daily_verse_channel_v4', {
+        await Notifications.setNotificationChannelAsync('daily_verse_channel_v5', {
           name: 'Daily Verse of the Day',
           description: 'Daily scripture inspiration notification',
           importance: Notifications.AndroidImportance.DEFAULT,
@@ -217,6 +236,45 @@ export const AlarmService = {
     } catch (e) {
       console.warn('Error setting up notification channels & categories:', e);
     }
+  },
+
+  /**
+   * Prepares and resolves custom sound file for native lock screen playback
+   */
+  async resolveNotificationSound(alarm: SpiritualAlarm, fallbackSound: string): Promise<string> {
+    if (alarm.ringtoneId !== 'custom' || !alarm.customAudioUri) {
+      return fallbackSound;
+    }
+
+    try {
+      if (Platform.OS === 'ios' && FileSystem.documentDirectory) {
+        const soundsDir = `${FileSystem.documentDirectory}../Library/Sounds/`;
+        const dirInfo = await FileSystem.getInfoAsync(soundsDir);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(soundsDir, { intermediates: true });
+        }
+
+        const originalExt = alarm.customAudioUri.split('.').pop()?.toLowerCase() || 'wav';
+        const safeExt = ['wav', 'm4a', 'caf', 'aiff', 'mp3', 'aac'].includes(originalExt)
+          ? originalExt
+          : 'wav';
+        const customSoundName = `custom_alarm_${alarm.id.replace(/[^a-zA-Z0-9]/g, '_')}.${safeExt}`;
+        const destinationUri = `${soundsDir}${customSoundName}`;
+
+        const fileInfo = await FileSystem.getInfoAsync(destinationUri);
+        if (!fileInfo.exists) {
+          await FileSystem.copyAsync({
+            from: alarm.customAudioUri,
+            to: destinationUri,
+          }).catch(() => {});
+        }
+        return customSoundName;
+      }
+    } catch (err) {
+      console.warn('Could not resolve custom audio in Library/Sounds:', err);
+    }
+
+    return fallbackSound;
   },
 
   /**
@@ -305,7 +363,7 @@ export const AlarmService = {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour: 6,
             minute: 0,
-            channelId: Platform.OS === 'android' ? 'daily_verse_channel_v4' : undefined,
+            channelId: Platform.OS === 'android' ? 'daily_verse_channel_v5' : undefined,
           } as any,
         });
       } catch (dailyErr) {
@@ -327,7 +385,7 @@ export const AlarmService = {
           alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'classic_bell';
         const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.classic_bell;
         const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
-        const soundFileName = ringtoneConf.soundFile;
+        const soundFileName = await this.resolveNotificationSound(alarm, ringtoneConf.soundFile);
 
         // Calculate next upcoming occurrence date
         const nextOccurrenceDate = this.getNextUpcomingOccurrence(alarm);
@@ -411,7 +469,7 @@ export const AlarmService = {
         alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'classic_bell';
       const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.classic_bell;
       const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
-      const soundFileName = ringtoneConf.soundFile;
+      const soundFileName = await this.resolveNotificationSound(alarm, ringtoneConf.soundFile);
 
       const startOffset = alarm.customAudioStartOffset || 0;
       const rawDuration = alarm.customAudioDuration || 30;

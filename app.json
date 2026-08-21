@@ -63,6 +63,9 @@
           "icon": "./assets/icon.png",
           "color": "#E5A93C",
           "sounds": [
+            "./assets/classic_phone_bell.wav",
+            "./assets/digital_alarm_beeps.wav",
+            "./assets/modern_marimba.wav",
             "./assets/spiritual_chimes.wav",
             "./assets/radiant_sunrise_bell.wav",
             "./assets/gospel_fanfare.wav",

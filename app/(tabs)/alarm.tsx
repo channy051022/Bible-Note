@@ -121,6 +121,7 @@ export default function AlarmScreen() {
     chapter: number;
     ringtoneId?: string;
     customAudioUri?: string;
+    customAudioStartOffset?: number;
   }>({
     visible: false,
     timeString: '7:00 AM',
@@ -128,7 +129,8 @@ export default function AlarmScreen() {
     citation: 'Psalm 23:1',
     bookId: 19,
     chapter: 23,
-    ringtoneId: 'chimes',
+    ringtoneId: 'classic_bell',
+    customAudioStartOffset: 0,
   });
 
   // Saved / User-added Custom Verses
@@ -347,8 +349,9 @@ export default function AlarmScreen() {
               citation,
               bookId,
               chapter,
-              ringtoneId: alarm.ringtoneId || 'chimes',
+              ringtoneId: alarm.ringtoneId || 'classic_bell',
               customAudioUri: alarm.customAudioUri,
+              customAudioStartOffset: alarm.customAudioStartOffset || 0,
             });
           },
         },
@@ -1656,152 +1659,162 @@ export default function AlarmScreen() {
                 </View>
               </TouchableOpacity>
 
-              {/* Expanded Ringtone Dropdown Menu */}
+              {/* Expanded Ringtone Dropdown Menu (Fixed size & Scrollable) */}
               {isRingtoneDropdownOpen && (
-                <View style={[styles.dropdownExpandedList, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
-                  {/* Built-in Ringtones */}
-                  {BUILT_IN_RINGTONES.map((rt) => {
-                    const isSelected = selectedRingtoneId === rt.id;
-                    const isPlaying = previewingRingtoneId === rt.id;
+                <View style={[styles.ringtoneExpandedCard, { backgroundColor: colors.glassCard, borderColor: colors.border }]}>
+                  <ScrollView
+                    style={styles.ringtoneScroll}
+                    contentContainerStyle={styles.ringtoneScrollContent}
+                    nestedScrollEnabled={true}
+                    showsVerticalScrollIndicator={true}
+                    persistentScrollbar={Platform.OS === 'android'}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {/* Built-in Ringtones */}
+                    {BUILT_IN_RINGTONES.map((rt) => {
+                      const isSelected = selectedRingtoneId === rt.id;
+                      const isPlaying = previewingRingtoneId === rt.id;
 
-                    return (
-                      <TouchableOpacity
-                        key={rt.id}
+                      return (
+                        <TouchableOpacity
+                          key={rt.id}
+                          style={[
+                            styles.ringtoneItem,
+                            {
+                              backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
+                              borderColor: isSelected ? colors.tint : colors.border,
+                            },
+                          ]}
+                          onPress={() => {
+                            setSelectedRingtoneId(rt.id);
+                            setIsRingtoneDropdownOpen(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                            size={18}
+                            color={isSelected ? colors.tint : colors.textSecondary}
+                            style={{ marginRight: 10 }}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.ringtoneTitle, { color: isSelected ? colors.tint : colors.text }]}>
+                              {rt.title}
+                            </Text>
+                            <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
+                              {rt.description}
+                            </Text>
+                          </View>
+
+                          {/* Preview Play/Stop Button */}
+                          <TouchableOpacity
+                            style={[
+                              styles.previewAudioBtn,
+                              { backgroundColor: isPlaying ? colors.tint : colors.glassCard, borderColor: colors.border },
+                            ]}
+                            onPress={() => handlePreviewRingtone(rt.id)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons
+                              name={isPlaying ? 'stop' : 'play'}
+                              size={14}
+                              color={isPlaying ? '#FFFFFF' : colors.tint}
+                            />
+                          </TouchableOpacity>
+                        </TouchableOpacity>
+                      );
+                    })}
+
+                    {/* Custom Imported Song Item */}
+                    {customAudioUri && (
+                      <View
                         style={[
                           styles.ringtoneItem,
                           {
-                            backgroundColor: isSelected ? colors.tintLight : colors.glassInput,
-                            borderColor: isSelected ? colors.tint : colors.border,
+                            backgroundColor: selectedRingtoneId === 'custom' ? colors.glassInput : 'transparent',
+                            borderColor: selectedRingtoneId === 'custom' ? colors.tint : colors.border,
+                            flexDirection: 'column',
+                            alignItems: 'stretch',
                           },
                         ]}
-                        onPress={() => {
-                          setSelectedRingtoneId(rt.id);
-                          setIsRingtoneDropdownOpen(false);
-                        }}
-                        activeOpacity={0.7}
                       >
-                        <Ionicons
-                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
-                          size={18}
-                          color={isSelected ? colors.tint : colors.textSecondary}
-                          style={{ marginRight: 10 }}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.ringtoneTitle, { color: isSelected ? colors.tint : colors.text }]}>
-                            {rt.title}
-                          </Text>
-                          <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
-                            {rt.description}
-                          </Text>
-                        </View>
-
-                        {/* Preview Play/Stop Button */}
                         <TouchableOpacity
-                          style={[
-                            styles.previewAudioBtn,
-                            { backgroundColor: isPlaying ? colors.tint : colors.glassCard, borderColor: colors.border },
-                          ]}
-                          onPress={() => handlePreviewRingtone(rt.id)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons
-                            name={isPlaying ? 'stop' : 'play'}
-                            size={14}
-                            color={isPlaying ? '#FFFFFF' : colors.tint}
-                          />
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                    );
-                  })}
-
-                  {/* Custom Imported Song Item */}
-                  {customAudioUri && (
-                    <View
-                      style={[
-                        styles.ringtoneItem,
-                        {
-                          backgroundColor: selectedRingtoneId === 'custom' ? colors.glassInput : 'transparent',
-                          borderColor: selectedRingtoneId === 'custom' ? colors.tint : colors.border,
-                          flexDirection: 'column',
-                          alignItems: 'stretch',
-                        },
-                      ]}
-                    >
-                      <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center' }}
-                        onPress={() => {
-                          setSelectedRingtoneId('custom');
-                          handlePreviewRingtone('custom', customAudioUri);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons
-                          name={selectedRingtoneId === 'custom' ? 'radio-button-on' : 'radio-button-off'}
-                          size={18}
-                          color={selectedRingtoneId === 'custom' ? colors.tint : colors.textSecondary}
-                          style={{ marginRight: 10 }}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.ringtoneTitle, { color: selectedRingtoneId === 'custom' ? colors.tint : colors.text }]}>
-                            🎵 {customAudioName || 'Custom Imported Music'}
-                          </Text>
-                          <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
-                            Length: {formatMinutesSeconds(customAudioDuration || 0)} • Starts at: {formatMinutesSeconds(customAudioStartOffset || 0)}
-                          </Text>
-                        </View>
-
-                        <TouchableOpacity
-                          style={[
-                            styles.previewAudioBtn,
-                            {
-                              backgroundColor: previewingRingtoneId === 'custom' ? colors.tint : colors.glassCard,
-                              borderColor: colors.border,
-                              marginRight: 6,
-                            },
-                          ]}
-                          onPress={() => handlePreviewRingtone('custom', customAudioUri)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons
-                            name={previewingRingtoneId === 'custom' ? 'stop' : 'play'}
-                            size={14}
-                            color={previewingRingtoneId === 'custom' ? '#FFFFFF' : colors.tint}
-                          />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center' }}
                           onPress={() => {
-                            SoundService.stopPreview();
-                            setCustomAudioUri(undefined);
-                            setCustomAudioName(undefined);
-                            setCustomAudioStartOffset(0);
-                            if (selectedRingtoneId === 'custom') {
-                              setSelectedRingtoneId('classic_bell');
-                            }
+                            setSelectedRingtoneId('custom');
+                            handlePreviewRingtone('custom', customAudioUri);
                           }}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          activeOpacity={0.7}
                         >
-                          <Ionicons name="trash-outline" size={16} color="#FF3B30" />
+                          <Ionicons
+                            name={selectedRingtoneId === 'custom' ? 'radio-button-on' : 'radio-button-off'}
+                            size={18}
+                            color={selectedRingtoneId === 'custom' ? colors.tint : colors.textSecondary}
+                            style={{ marginRight: 10 }}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.ringtoneTitle, { color: selectedRingtoneId === 'custom' ? colors.tint : colors.text }]}>
+                              🎵 {customAudioName || 'Custom Imported Music'}
+                            </Text>
+                            <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
+                              Length: {formatMinutesSeconds(customAudioDuration || 0)} • Starts at: {formatMinutesSeconds(customAudioStartOffset || 0)}
+                            </Text>
+                          </View>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.previewAudioBtn,
+                              {
+                                backgroundColor: previewingRingtoneId === 'custom' ? colors.tint : colors.glassCard,
+                                borderColor: colors.border,
+                                marginRight: 6,
+                              },
+                            ]}
+                            onPress={() => handlePreviewRingtone('custom', customAudioUri)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons
+                              name={previewingRingtoneId === 'custom' ? 'stop' : 'play'}
+                              size={14}
+                              color={previewingRingtoneId === 'custom' ? '#FFFFFF' : colors.tint}
+                            />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={() => {
+                              SoundService.stopPreview();
+                              setCustomAudioUri(undefined);
+                              setCustomAudioName(undefined);
+                              setCustomAudioStartOffset(0);
+                              if (selectedRingtoneId === 'custom') {
+                                setSelectedRingtoneId('classic_bell');
+                              }
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="trash-outline" size={16} color="#FF3B30" />
+                          </TouchableOpacity>
                         </TouchableOpacity>
-                      </TouchableOpacity>
 
-                      {/* Cut / Choose Start Point Button */}
-                      <TouchableOpacity
-                        style={[styles.trimCutBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                        onPress={openTrimmerModal}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="cut" size={15} color={colors.tint} style={{ marginRight: 6 }} />
-                        <Text style={[styles.trimCutBtnText, { color: colors.tint }]}>
-                          {customAudioStartOffset && customAudioStartOffset > 0
-                            ? `✂️ Cut Point: Starts at ${formatMinutesSeconds(customAudioStartOffset)} (Change)`
-                            : '✂️ Cut Song / Choose Start Point (Chorus, Intro...)'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                        {/* Cut / Choose Start Point Button */}
+                        <TouchableOpacity
+                          style={[styles.trimCutBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                          onPress={openTrimmerModal}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="cut" size={15} color={colors.tint} style={{ marginRight: 6 }} />
+                          <Text style={[styles.trimCutBtnText, { color: colors.tint }]}>
+                            {customAudioStartOffset && customAudioStartOffset > 0
+                              ? `✂️ Cut Point: Starts at ${formatMinutesSeconds(customAudioStartOffset)} (Change)`
+                              : '✂️ Cut Song / Choose Start Point (Chorus, Intro...)'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
 
-                  {/* Import Custom Music Button */}
+                  </ScrollView>
+
+                  {/* Fixed Import Custom Music Button (Non-scrollable, always visible) */}
                   <TouchableOpacity
                     style={[styles.importMusicBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
                     onPress={handlePickCustomMusic}
@@ -2276,6 +2289,7 @@ export default function AlarmScreen() {
         chapter={activeAlarmData.chapter}
         ringtoneId={activeAlarmData.ringtoneId}
         customAudioUri={activeAlarmData.customAudioUri}
+        customAudioStartOffset={activeAlarmData.customAudioStartOffset}
       />
     </View>
   );
@@ -2651,13 +2665,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  ringtoneExpandedCard: {
+    padding: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  ringtoneScroll: {
+    maxHeight: 185,
+  },
+  ringtoneScrollContent: {
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+  },
   ringtoneItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
+    padding: 11,
+    borderRadius: 13,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: 7,
   },
   ringtoneTitle: {
     fontSize: 13,
@@ -2679,12 +2706,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderStyle: 'dashed',
-    marginTop: 4,
-    marginBottom: 6,
+    marginTop: 6,
   },
   importMusicBtnText: {
     fontSize: 13,
