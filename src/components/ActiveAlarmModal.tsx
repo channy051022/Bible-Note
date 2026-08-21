@@ -197,13 +197,13 @@ export const ActiveAlarmModal: React.FC<ActiveAlarmModalProps> = ({
               <Text style={styles.readVerseBtnText}>📖   READ VERSE</Text>
             </TouchableOpacity>
 
-            {/* Secondary: Snooze 10 minutes */}
+            {/* Secondary: Snooze 5 minutes */}
             <TouchableOpacity
               style={styles.snoozeBtn}
               onPress={handleSnooze}
               activeOpacity={0.7}
             >
-              <Text style={styles.snoozeBtnText}>Snooze 10 minutes</Text>
+              <Text style={styles.snoozeBtnText}>Snooze 5 minutes</Text>
             </TouchableOpacity>
           </View>
         </View>

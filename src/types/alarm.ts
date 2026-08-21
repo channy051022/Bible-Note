@@ -22,5 +22,6 @@ export interface SpiritualAlarm {
   ringtoneId?: string;
   customAudioUri?: string;
   customAudioName?: string;
-  durationSeconds?: number; // 1 to 60 seconds
+  /** @deprecated Alarms now loop continuously until dismissed or snoozed */
+  durationSeconds?: number;
 }

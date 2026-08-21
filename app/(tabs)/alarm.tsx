@@ -154,7 +154,6 @@ export default function AlarmScreen() {
   const [customVerseText, setCustomVerseText] = useState<string>(
     'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'
   );
-  const [alarmDurationSeconds, setAlarmDurationSeconds] = useState<number>(30);
   const [selectedRingtoneId, setSelectedRingtoneId] = useState<string>('chimes');
   const [customAudioUri, setCustomAudioUri] = useState<string | undefined>(undefined);
   const [customAudioName, setCustomAudioName] = useState<string | undefined>(undefined);
@@ -423,7 +422,6 @@ export default function AlarmScreen() {
         setPickerChapter(alarmToEdit.chapter || 1);
         setPickerVerse(alarmToEdit.verse || 1);
       }
-      setAlarmDurationSeconds(alarmToEdit.durationSeconds || 30);
     } else {
       setEditingAlarmId(null);
       setSelectedHour(7);
@@ -442,7 +440,6 @@ export default function AlarmScreen() {
       setPickerBookId(43);
       setPickerChapter(3);
       setPickerVerse(16);
-      setAlarmDurationSeconds(30);
     }
     setModalVisible(true);
   };
@@ -502,7 +499,6 @@ export default function AlarmScreen() {
       ringtoneId: selectedRingtoneId,
       customAudioUri: selectedRingtoneId === 'custom' ? customAudioUri : undefined,
       customAudioName: selectedRingtoneId === 'custom' ? customAudioName : undefined,
-      durationSeconds: Math.min(60, Math.max(1, alarmDurationSeconds)),
     };
 
     const updated = await AlarmService.saveAlarm(newAlarm);
@@ -1686,61 +1682,6 @@ export default function AlarmScreen() {
                   </TouchableOpacity>
                 </View>
               )}
-
-              {/* 6. Ring Duration (1 to 60 seconds) */}
-              <View style={{ marginTop: 16 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginBottom: 0 }]}>
-                    ALARM DURATION (1–60 SECONDS)
-                  </Text>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.tint }}>
-                    {alarmDurationSeconds} sec
-                  </Text>
-                </View>
-
-                <View style={styles.durationSelectorRow}>
-                  <TouchableOpacity
-                    onPress={() => setAlarmDurationSeconds((prev) => Math.max(1, prev - 1))}
-                    style={[styles.durationStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Ionicons name="remove" size={16} color={colors.text} />
-                  </TouchableOpacity>
-
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.durationScroll}>
-                    {[1, 5, 10, 15, 20, 30, 45, 60].map((sec) => (
-                      <TouchableOpacity
-                        key={sec}
-                        onPress={() => setAlarmDurationSeconds(sec)}
-                        style={[
-                          styles.durationQuickPill,
-                          {
-                            backgroundColor: alarmDurationSeconds === sec ? colors.tint : colors.glassInput,
-                            borderColor: alarmDurationSeconds === sec ? colors.tint : colors.border,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.durationQuickPillText,
-                            { color: alarmDurationSeconds === sec ? '#FFFFFF' : colors.text },
-                          ]}
-                        >
-                          {sec}s
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-
-                  <TouchableOpacity
-                    onPress={() => setAlarmDurationSeconds((prev) => Math.min(60, prev + 1))}
-                    style={[styles.durationStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Ionicons name="add" size={16} color={colors.text} />
-                  </TouchableOpacity>
-                </View>
-              </View>
 
               {/* Save Button */}
               <TouchableOpacity

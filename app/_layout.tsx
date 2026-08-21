@@ -70,6 +70,8 @@ function RootNavigationLayout() {
     // 0. Handle cold-start from tapping notification on lock screen or banner
     Notifications.getLastNotificationResponseAsync().then((response) => {
       if (response && response.actionIdentifier === 'DISMISS_ALARM') {
+        SoundService.stopAlarmRingtone();
+        AlarmService.dismissActiveAlarm().catch(() => {});
         setActiveAlarm(null);
         return;
       }
