@@ -280,23 +280,22 @@ export const AlarmService = {
   /**
    * Calculates the exact upcoming Date for a given weekday (0=Sun..6=Sat) and time (hour, minute)
    */
-  getNextOccurrenceDate(dayOfWeek: number, hour: number, minute: number): Date {
-    const now = new Date();
-    const currentDay = now.getDay();
+  getNextOccurrenceDate(dayOfWeek: number, hour: number, minute: number, baseDate: Date = new Date()): Date {
+    const currentDay = baseDate.getDay();
     let daysUntil = (dayOfWeek - currentDay + 7) % 7;
 
     const target = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() + daysUntil,
+      baseDate.getFullYear(),
+      baseDate.getMonth(),
+      baseDate.getDate() + daysUntil,
       hour,
       minute,
       0,
       0
     );
 
-    // If target is today but the scheduled minute has already passed (or within next 5s), schedule for next week
-    if (daysUntil === 0 && target.getTime() <= now.getTime() + 5000) {
+    // If target is today but the scheduled minute has already passed, schedule for next week
+    if (daysUntil === 0 && target.getTime() <= baseDate.getTime()) {
       target.setDate(target.getDate() + 7);
     }
 
@@ -304,9 +303,43 @@ export const AlarmService = {
   },
 
   /**
+   * Calculates all upcoming occurrence Dates for an alarm across its repeat days over the next `daysInAdvance` days (default 14 days)
+   */
+  getAllUpcomingOccurrences(alarm: SpiritualAlarm, daysInAdvance: number = 14): Date[] {
+    const days =
+      alarm.days && alarm.days.length > 0 ? alarm.days : [0, 1, 2, 3, 4, 5, 6];
+    const now = new Date();
+    const occurrences: Date[] = [];
+
+    for (let offset = 0; offset < daysInAdvance; offset++) {
+      const checkDate = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + offset,
+        alarm.hour,
+        alarm.minute,
+        0,
+        0
+      );
+      const dayOfWeek = checkDate.getDay();
+      if (days.includes(dayOfWeek)) {
+        // Must be in the future (at least 2 seconds ahead of current time)
+        if (checkDate.getTime() > now.getTime() + 2000) {
+          occurrences.push(checkDate);
+        }
+      }
+    }
+    return occurrences.sort((a, b) => a.getTime() - b.getTime());
+  },
+
+  /**
    * Calculates the earliest upcoming occurrence Date across all active days of an alarm
    */
   getNextUpcomingOccurrence(alarm: SpiritualAlarm): Date {
+    const occurrences = this.getAllUpcomingOccurrences(alarm, 8);
+    if (occurrences.length > 0) {
+      return occurrences[0];
+    }
     const days =
       alarm.days && alarm.days.length > 0 ? alarm.days : [0, 1, 2, 3, 4, 5, 6];
     const candidateDates = days.map((d) =>
@@ -370,7 +403,7 @@ export const AlarmService = {
         console.warn('Error rescheduling daily verse along with alarms:', dailyErr);
       }
 
-      // 5. Schedule sequential waves timed precisely to song length and cut point
+      // 5. Schedule sequential waves timed precisely to song length and cut point for all upcoming days
       for (const alarm of alarms) {
         if (!alarm.isEnabled) continue;
 
@@ -387,9 +420,6 @@ export const AlarmService = {
         const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
         const soundFileName = await this.resolveNotificationSound(alarm, ringtoneConf.soundFile);
 
-        // Calculate next upcoming occurrence date
-        const nextOccurrenceDate = this.getNextUpcomingOccurrence(alarm);
-
         // Determine effective wave interval based on trimmed song length (total - startOffset)
         const startOffset = alarm.customAudioStartOffset || 0;
         const rawDuration = alarm.customAudioDuration || 30;
@@ -398,16 +428,60 @@ export const AlarmService = {
             ? Math.ceil(rawDuration - startOffset)
             : 30;
         const waveInterval = Math.max(15, effectiveDuration);
-        const waveCount = Math.min(8, Math.max(3, Math.ceil(180 / waveInterval)));
+        const waveCount = Math.min(5, Math.max(3, Math.ceil(180 / waveInterval)));
 
-        // Schedule sequential waves so each song plays from start point to completion before next begins
-        for (let wave = 0; wave < waveCount; wave++) {
-          const waveTimestamp = new Date(
-            nextOccurrenceDate.getTime() + wave * waveInterval * 1000
-          );
+        // A. Multi-Day Advance Scheduled Dates (Guarantees next 14 days of exact alarms trigger even when app is closed)
+        const upcomingDates = this.getAllUpcomingOccurrences(alarm, 14);
+        for (const occurrenceDate of upcomingDates) {
+          const dateKey = `${occurrenceDate.getFullYear()}${(occurrenceDate.getMonth() + 1).toString().padStart(2, '0')}${occurrenceDate.getDate().toString().padStart(2, '0')}`;
 
+          for (let wave = 0; wave < waveCount; wave++) {
+            const waveTimestamp = new Date(
+              occurrenceDate.getTime() + wave * waveInterval * 1000
+            );
+
+            await Notifications.scheduleNotificationAsync({
+              identifier: `alarm-wave-${alarm.id}-${dateKey}-w${wave}`,
+              content: {
+                title: `🔔 ${timeFormatted} • ${alarm.label}`,
+                body: `✝️ ${citation}\n"${verseBody}"`,
+                sound: soundFileName,
+                priority: Notifications.AndroidNotificationPriority.MAX,
+                vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
+                categoryIdentifier: 'spiritual_alarm',
+                color: '#E5A93C',
+                autoDismiss: false,
+                sticky: false,
+                data: {
+                  alarmId: alarm.id,
+                  timeString: timeFormatted,
+                  citation,
+                  text: verseBody,
+                  bookId: alarm.bookId || ref.bookId,
+                  chapter: alarm.chapter || ref.chapter,
+                  ringtoneId: ringtoneKey,
+                  customAudioUri: alarm.customAudioUri,
+                  customAudioDuration: alarm.customAudioDuration,
+                  customAudioStartOffset: alarm.customAudioStartOffset || 0,
+                  isSpiritualAlarm: true,
+                  waveIndex: wave,
+                },
+                interruptionLevel: 'timeSensitive',
+              },
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: waveTimestamp,
+                channelId,
+              } as any,
+            });
+          }
+        }
+
+        // B. Native Recurring Triggers (Permanent recurring schedules maintained by OS indefinitely)
+        const days = alarm.days && alarm.days.length > 0 ? alarm.days : [0, 1, 2, 3, 4, 5, 6];
+        if (days.length === 7) {
           await Notifications.scheduleNotificationAsync({
-            identifier: `alarm-wave-${alarm.id}-w${wave}`,
+            identifier: `alarm-recurring-daily-${alarm.id}`,
             content: {
               title: `🔔 ${timeFormatted} • ${alarm.label}`,
               body: `✝️ ${citation}\n"${verseBody}"`,
@@ -427,19 +501,69 @@ export const AlarmService = {
                 chapter: alarm.chapter || ref.chapter,
                 ringtoneId: ringtoneKey,
                 customAudioUri: alarm.customAudioUri,
-                customAudioDuration: alarm.customAudioDuration,
-                customAudioStartOffset: alarm.customAudioStartOffset || 0,
                 isSpiritualAlarm: true,
-                waveIndex: wave,
               },
               interruptionLevel: 'timeSensitive',
             },
-            trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DATE,
-              date: waveTimestamp,
-              channelId,
-            } as any,
+            trigger: Platform.OS === 'ios'
+              ? {
+                  type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+                  hour: alarm.hour,
+                  minute: alarm.minute,
+                  repeats: true,
+                } as any
+              : {
+                  type: Notifications.SchedulableTriggerInputTypes.DAILY,
+                  hour: alarm.hour,
+                  minute: alarm.minute,
+                  channelId,
+                } as any,
           });
+        } else {
+          for (const day of days) {
+            const weekdayOneIndexed = day + 1;
+            await Notifications.scheduleNotificationAsync({
+              identifier: `alarm-recurring-weekly-${alarm.id}-d${day}`,
+              content: {
+                title: `🔔 ${timeFormatted} • ${alarm.label}`,
+                body: `✝️ ${citation}\n"${verseBody}"`,
+                sound: soundFileName,
+                priority: Notifications.AndroidNotificationPriority.MAX,
+                vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
+                categoryIdentifier: 'spiritual_alarm',
+                color: '#E5A93C',
+                autoDismiss: false,
+                sticky: false,
+                data: {
+                  alarmId: alarm.id,
+                  timeString: timeFormatted,
+                  citation,
+                  text: verseBody,
+                  bookId: alarm.bookId || ref.bookId,
+                  chapter: alarm.chapter || ref.chapter,
+                  ringtoneId: ringtoneKey,
+                  customAudioUri: alarm.customAudioUri,
+                  isSpiritualAlarm: true,
+                },
+                interruptionLevel: 'timeSensitive',
+              },
+              trigger: Platform.OS === 'ios'
+                ? {
+                    type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+                    weekday: weekdayOneIndexed,
+                    hour: alarm.hour,
+                    minute: alarm.minute,
+                    repeats: true,
+                  } as any
+                : {
+                    type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+                    weekday: weekdayOneIndexed,
+                    hour: alarm.hour,
+                    minute: alarm.minute,
+                    channelId,
+                  } as any,
+            });
+          }
         }
       }
     } catch (e) {
@@ -456,7 +580,17 @@ export const AlarmService = {
     try {
       await this.requestNotificationPermissions();
       await this.initNotificationChannels();
-      await this.dismissActiveAlarm();
+      await SoundService.stopAlarmRingtone();
+      await SoundService.stopPreview();
+      await Notifications.dismissAllNotificationsAsync();
+
+      // Cancel any prior test alarm waves so they do not conflict
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      for (const n of scheduled) {
+        if (n.identifier.startsWith('alarm-wave-test-')) {
+          await Notifications.cancelScheduledNotificationAsync(n.identifier);
+        }
+      }
 
       const ref = getTodayVerseRef();
       const book = BIBLE_BOOKS.find((b) => b.id === (alarm.bookId || ref.bookId));
@@ -478,7 +612,7 @@ export const AlarmService = {
           ? Math.ceil(rawDuration - startOffset)
           : 30;
       const waveInterval = Math.max(15, effectiveDuration);
-      const waveCount = Math.min(8, Math.max(3, Math.ceil(180 / waveInterval)));
+      const waveCount = Math.min(5, Math.max(3, Math.ceil(180 / waveInterval)));
 
       // Schedule sequential waves spaced precisely according to song duration
       for (let wave = 0; wave < waveCount; wave++) {
@@ -546,7 +680,8 @@ export const AlarmService = {
     if (Platform.OS === 'web') return;
 
     try {
-      await this.dismissActiveAlarm();
+      await SoundService.stopAlarmRingtone();
+      await Notifications.dismissAllNotificationsAsync();
       const delaySeconds = Math.max(10, snoozeMinutes * 60);
 
       const ref = getTodayVerseRef();
@@ -571,7 +706,7 @@ export const AlarmService = {
           ? Math.ceil(rawDuration - startOffset)
           : 30;
       const waveInterval = Math.max(15, effectiveDuration);
-      const waveCount = Math.min(8, Math.max(3, Math.ceil(180 / waveInterval)));
+      const waveCount = Math.min(5, Math.max(3, Math.ceil(180 / waveInterval)));
 
       for (let wave = 0; wave < waveCount; wave++) {
         const triggerDelay = delaySeconds + wave * waveInterval;
@@ -627,17 +762,14 @@ export const AlarmService = {
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
       for (const n of scheduled) {
         if (
-          n.identifier.startsWith('alarm-wave-') ||
-          n.identifier.startsWith('alarm-') ||
-          n.identifier.startsWith('test-alarm-')
+          n.identifier.startsWith('alarm-wave-test-') ||
+          n.identifier.startsWith('alarm-wave-snooze-')
         ) {
           await Notifications.cancelScheduledNotificationAsync(n.identifier);
         }
       }
-      // Re-schedule regular upcoming alarms in background so future days remain armed
-      setTimeout(() => {
-        this.rescheduleAllAlarms().catch(() => {});
-      }, 500);
+      // Re-schedule regular upcoming alarms to guarantee future days remain armed
+      await this.rescheduleAllAlarms();
     } catch (e) {
       console.warn('Error dismissing active alarms:', e);
     }

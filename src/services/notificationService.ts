@@ -3,16 +3,6 @@ import { Platform } from 'react-native';
 import { getTodayVerseRef } from '../constants/VerseOfTheDay';
 import { BIBLE_BOOKS } from '../constants/BibleBooks';
 
-// Configure notification behavior for phone lock screen & home screen
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
 
 export const NotificationService = {
   /**

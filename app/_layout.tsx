@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet, Image, Text } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Image, Text, AppState, AppStateStatus } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -138,9 +138,17 @@ function RootNavigationLayout() {
       }
     });
 
+    // 3. Keep alarms synced whenever app is closed, backgrounded, or resumed
+    const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'background' || nextState === 'inactive' || nextState === 'active') {
+        AlarmService.rescheduleAllAlarms().catch(() => {});
+      }
+    });
+
     return () => {
       subReceived.remove();
       subResponse.remove();
+      appStateSub.remove();
     };
   }, []);
 
