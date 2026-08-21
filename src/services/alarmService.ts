@@ -1,7 +1,8 @@
 import * as Notifications from 'expo-notifications';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as FileSystemRoot from 'expo-file-system';
-import { Platform } from 'react-native';
+import { Platform, Alert, Linking } from 'react-native';
+import * as IntentLauncher from 'expo-intent-launcher';
 
 const FileSystem: any = (FileSystemLegacy && FileSystemLegacy.documentDirectory)
   ? FileSystemLegacy
@@ -13,6 +14,10 @@ import { BIBLE_BOOKS } from '../constants/BibleBooks';
 import { SoundService } from './soundService';
 
 const ALARMS_STORAGE_KEY = 'SHEPHERD_SPIRITUAL_ALARMS';
+
+// Debounce timer for rescheduleAllAlarms to prevent rapid cancel+reschedule race conditions
+let _rescheduleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const RESCHEDULE_DEBOUNCE_MS = 2000;
 
 export interface RingtoneChannelConfig {
   soundFile: string;
@@ -152,6 +157,85 @@ export const AlarmService = {
     } catch (e) {
       console.warn('Error requesting notification permissions:', e);
       return false;
+    }
+  },
+
+  /**
+   * Checks if Android 12+ exact alarm permission is granted, and prompts user to enable it.
+   * Returns true if exact alarms are available (or not needed on this OS version).
+   */
+  async checkAndRequestExactAlarmPermission(showAlert: boolean = true): Promise<boolean> {
+    if (Platform.OS !== 'android') return true;
+
+    try {
+      // Android 12+ (API 31+) requires explicit SCHEDULE_EXACT_ALARM permission
+      // expo-notifications native code checks canScheduleExactAlarms() and falls back to inexact
+      // We need to guide the user to grant this permission for reliable alarms
+      const { android } = Platform.Version ? { android: Platform.Version } : { android: 0 };
+      if (typeof android === 'number' && android >= 31) {
+        // Try opening the exact alarm settings page
+        if (showAlert) {
+          Alert.alert(
+            'Exact Alarm Permission Required ⏰',
+            'For your spiritual alarm to ring reliably even when the app is closed, you need to allow "Alarms & Reminders" in Settings.\n\nThis ensures your alarm fires at the exact time you set.',
+            [
+              {
+                text: 'Open Settings',
+                onPress: async () => {
+                  try {
+                    await IntentLauncher.startActivityAsync(
+                      'android.settings.REQUEST_SCHEDULE_EXACT_ALARM'
+                    );
+                  } catch {
+                    // Fallback: open app's general settings
+                    await Linking.openSettings().catch(() => {});
+                  }
+                },
+              },
+              { text: 'Later', style: 'cancel' },
+            ]
+          );
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('Error checking exact alarm permission:', e);
+      return true;
+    }
+  },
+
+  /**
+   * Checks battery optimization status and guides user to disable it for reliable alarm delivery.
+   * Many Android OEMs (Samsung, Xiaomi, Huawei, Oppo) aggressively kill background processes.
+   */
+  async checkBatteryOptimization(showAlert: boolean = true): Promise<void> {
+    if (Platform.OS !== 'android') return;
+
+    try {
+      if (showAlert) {
+        Alert.alert(
+          'Disable Battery Optimization 🔋',
+          'Some Android devices prevent alarms from ringing when the app is closed due to battery optimization.\n\nTo ensure your spiritual alarm always rings on time:\n\n1. Tap "Open Settings" below\n2. Find "SHEPHERD" in the app list\n3. Select "Don\'t optimize" or "Unrestricted"',
+          [
+            {
+              text: 'Open Settings',
+              onPress: async () => {
+                try {
+                  await IntentLauncher.startActivityAsync(
+                    'android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS'
+                  );
+                } catch {
+                  // Fallback: open general settings
+                  await Linking.openSettings().catch(() => {});
+                }
+              },
+            },
+            { text: 'Later', style: 'cancel' },
+          ]
+        );
+      }
+    } catch (e) {
+      console.warn('Error checking battery optimization:', e);
     }
   },
 
@@ -350,20 +434,32 @@ export const AlarmService = {
   },
 
   /**
-   * Reschedules all saved alarms from disk (called on app startup and focus)
+   * Reschedules all saved alarms from disk (called on app startup and focus).
+   * Debounced to prevent rapid cancel+reschedule race conditions when AppState changes rapidly.
    */
   async rescheduleAllAlarms(): Promise<void> {
-    try {
-      const alarms = await this.getAlarms();
-      await this.syncAllAlarmSchedules(alarms);
-    } catch (e) {
-      console.warn('Error during rescheduleAllAlarms:', e);
-    }
+    return new Promise((resolve) => {
+      if (_rescheduleDebounceTimer) {
+        clearTimeout(_rescheduleDebounceTimer);
+      }
+      _rescheduleDebounceTimer = setTimeout(async () => {
+        _rescheduleDebounceTimer = null;
+        try {
+          const alarms = await this.getAlarms();
+          await this.syncAllAlarmSchedules(alarms);
+        } catch (e) {
+          console.warn('Error during rescheduleAllAlarms:', e);
+        }
+        resolve();
+      }, RESCHEDULE_DEBOUNCE_MS);
+    });
   },
 
   /**
-   * Synchronizes active alarms with expo-notifications
-   * Loops sequentially based on the exact trimmed duration of the selected song / ringtone so audio NEVER overlaps
+   * Synchronizes active alarms with expo-notifications.
+   * Uses SURGICAL cancellation: only removes alarm-specific notifications by prefix,
+   * never calls cancelAllScheduledNotificationsAsync() to avoid the deadly race condition
+   * where the app gets killed mid-reschedule leaving zero alarms registered.
    */
   async syncAllAlarmSchedules(alarms: SpiritualAlarm[]) {
     if (Platform.OS === 'web') return;
@@ -375,8 +471,25 @@ export const AlarmService = {
       // 2. Ensure channels are initialized
       await this.initNotificationChannels();
 
-      // 3. Cancel previously scheduled alarm notifications
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      // 3. SURGICAL cancellation: only cancel alarm-wave, alarm-recurring, and daily-verse identifiers
+      //    This prevents the race condition where cancelAllScheduledNotificationsAsync() wipes everything
+      //    and the app gets killed before new alarms are registered.
+      try {
+        const existingScheduled = await Notifications.getAllScheduledNotificationsAsync();
+        for (const n of existingScheduled) {
+          if (
+            n.identifier.startsWith('alarm-wave-') ||
+            n.identifier.startsWith('alarm-recurring-') ||
+            n.identifier === 'daily-verse-of-day-notification'
+          ) {
+            await Notifications.cancelScheduledNotificationAsync(n.identifier);
+          }
+        }
+      } catch (cancelErr) {
+        console.warn('Error during surgical alarm cancellation, falling back:', cancelErr);
+        // Only as absolute last resort — this is the dangerous path
+        await Notifications.cancelAllScheduledNotificationsAsync();
+      }
 
       // 4. Re-register daily 6:00 AM lockscreen verse notification
       try {

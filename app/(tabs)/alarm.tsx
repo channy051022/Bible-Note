@@ -618,6 +618,23 @@ export default function AlarmScreen() {
       'Spiritual Alarm Saved! 🔔',
       `Your alarm is set for ${formattedTime} (${AlarmService.formatDays(selectedDays)}).\n\nWhen the time arrives, your phone will ring and display God's Word on your screen!`
     );
+
+    // On Android, guide user through critical permissions on first alarm save
+    if (Platform.OS === 'android') {
+      try {
+        const alarmPermissionsChecked = getItem<boolean>('ALARM_PERMISSIONS_CHECKED', false);
+        if (!alarmPermissionsChecked) {
+          setItem('ALARM_PERMISSIONS_CHECKED', true);
+          // Stagger the alerts so they don't overlap
+          setTimeout(() => {
+            AlarmService.checkAndRequestExactAlarmPermission(true);
+          }, 1500);
+          setTimeout(() => {
+            AlarmService.checkBatteryOptimization(true);
+          }, 8000);
+        }
+      } catch {}
+    }
   };
 
   const toggleDay = (day: number) => {

@@ -138,9 +138,11 @@ function RootNavigationLayout() {
       }
     });
 
-    // 3. Keep alarms synced whenever app is closed, backgrounded, or resumed
+    // 3. Re-sync alarms ONLY when user returns to the app (active state).
+    //    NEVER reschedule on 'background'/'inactive' — the cancel+reschedule loop
+    //    is a race condition: if the OS kills the app mid-reschedule, all alarms are wiped.
     const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-      if (nextState === 'background' || nextState === 'inactive' || nextState === 'active') {
+      if (nextState === 'active') {
         AlarmService.rescheduleAllAlarms().catch(() => {});
       }
     });

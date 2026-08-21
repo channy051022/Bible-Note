@@ -29,6 +29,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "audio",
+          "fetch",
           "remote-notification"
         ]
       }
