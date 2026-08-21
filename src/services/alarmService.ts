@@ -15,6 +15,21 @@ export interface RingtoneChannelConfig {
 }
 
 export const RINGTONE_SOUND_MAP: Record<string, RingtoneChannelConfig> = {
+  classic_bell: {
+    soundFile: 'classic_phone_bell.wav',
+    channelId: 'spiritual_alarm_classic_bell_v4',
+    channelName: 'Spiritual Alarms (Classic Phone Bell)',
+  },
+  digital_alarm: {
+    soundFile: 'digital_alarm_beeps.wav',
+    channelId: 'spiritual_alarm_digital_v4',
+    channelName: 'Spiritual Alarms (Digital Clock Beeps)',
+  },
+  marimba: {
+    soundFile: 'modern_marimba.wav',
+    channelId: 'spiritual_alarm_marimba_v4',
+    channelName: 'Spiritual Alarms (Modern Marimba)',
+  },
   chimes: {
     soundFile: 'spiritual_chimes.wav',
     channelId: 'spiritual_alarm_chimes_v4',
@@ -46,11 +61,6 @@ export const RINGTONE_SOUND_MAP: Record<string, RingtoneChannelConfig> = {
     channelName: 'Spiritual Alarms (Peaceful Piano)',
   },
 };
-
-// 24 continuous waves spaced 5s apart = 2 minutes of continuous non-stop ringing
-// Fast 5s wave pulses ensure the audio keeps ringing even if iOS temporary banners auto-dismiss in 4s
-const ALARM_WAVES_COUNT = 24;
-const WAVE_INTERVAL_SECONDS = 5;
 
 export const AlarmService = {
   /**
@@ -262,7 +272,7 @@ export const AlarmService = {
 
   /**
    * Synchronizes active alarms with expo-notifications
-   * Uses multi-wave bursts for upcoming alarm times to guarantee continuous looping on iOS & Android
+   * Loops sequentially based on the exact trimmed duration of the selected song / ringtone so audio NEVER overlaps
    */
   async syncAllAlarmSchedules(alarms: SpiritualAlarm[]) {
     if (Platform.OS === 'web') return;
@@ -302,7 +312,7 @@ export const AlarmService = {
         console.warn('Error rescheduling daily verse along with alarms:', dailyErr);
       }
 
-      // 5. Schedule all active alarms with continuous wave bursts
+      // 5. Schedule sequential waves timed precisely to song length and cut point
       for (const alarm of alarms) {
         if (!alarm.isEnabled) continue;
 
@@ -314,18 +324,28 @@ export const AlarmService = {
         const verseBody = alarm.customText || 'The Lord is my shepherd; I shall not want.';
 
         const ringtoneKey =
-          alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'chimes';
-        const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.chimes;
+          alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'classic_bell';
+        const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.classic_bell;
         const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
         const soundFileName = ringtoneConf.soundFile;
 
-        // Calculate the next upcoming occurrence time for this alarm
+        // Calculate next upcoming occurrence date
         const nextOccurrenceDate = this.getNextUpcomingOccurrence(alarm);
 
-        // Schedule consecutive waves (5s apart) for continuous non-stop ringing
-        for (let wave = 0; wave < ALARM_WAVES_COUNT; wave++) {
+        // Determine effective wave interval based on trimmed song length (total - startOffset)
+        const startOffset = alarm.customAudioStartOffset || 0;
+        const rawDuration = alarm.customAudioDuration || 30;
+        const effectiveDuration =
+          alarm.customAudioDuration && alarm.customAudioDuration > startOffset + 5
+            ? Math.ceil(rawDuration - startOffset)
+            : 30;
+        const waveInterval = Math.max(15, effectiveDuration);
+        const waveCount = Math.min(8, Math.max(3, Math.ceil(180 / waveInterval)));
+
+        // Schedule sequential waves so each song plays from start point to completion before next begins
+        for (let wave = 0; wave < waveCount; wave++) {
           const waveTimestamp = new Date(
-            nextOccurrenceDate.getTime() + wave * WAVE_INTERVAL_SECONDS * 1000
+            nextOccurrenceDate.getTime() + wave * waveInterval * 1000
           );
 
           await Notifications.scheduleNotificationAsync({
@@ -349,6 +369,8 @@ export const AlarmService = {
                 chapter: alarm.chapter || ref.chapter,
                 ringtoneId: ringtoneKey,
                 customAudioUri: alarm.customAudioUri,
+                customAudioDuration: alarm.customAudioDuration,
+                customAudioStartOffset: alarm.customAudioStartOffset || 0,
                 isSpiritualAlarm: true,
                 waveIndex: wave,
               },
@@ -368,7 +390,7 @@ export const AlarmService = {
   },
 
   /**
-   * Schedules a delayed test alarm with consecutive waves (looping) to test lockscreen wake-up behavior
+   * Schedules a delayed test alarm timed precisely to the song length and cut point to test wake-up behavior
    */
   async scheduleTestAlarm(seconds: number = 5, alarm: SpiritualAlarm): Promise<void> {
     if (Platform.OS === 'web') return;
@@ -386,14 +408,23 @@ export const AlarmService = {
       const verseBody = alarm.customText || 'The Lord is my shepherd; I shall not want.';
 
       const ringtoneKey =
-        alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'chimes';
-      const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.chimes;
+        alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'classic_bell';
+      const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.classic_bell;
       const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
       const soundFileName = ringtoneConf.soundFile;
 
-      // Schedule consecutive waves (5s apart) so it loops continuously
-      for (let wave = 0; wave < ALARM_WAVES_COUNT; wave++) {
-        const triggerDelay = Math.max(1, seconds + wave * WAVE_INTERVAL_SECONDS);
+      const startOffset = alarm.customAudioStartOffset || 0;
+      const rawDuration = alarm.customAudioDuration || 30;
+      const effectiveDuration =
+        alarm.customAudioDuration && alarm.customAudioDuration > startOffset + 5
+          ? Math.ceil(rawDuration - startOffset)
+          : 30;
+      const waveInterval = Math.max(15, effectiveDuration);
+      const waveCount = Math.min(8, Math.max(3, Math.ceil(180 / waveInterval)));
+
+      // Schedule sequential waves spaced precisely according to song duration
+      for (let wave = 0; wave < waveCount; wave++) {
+        const triggerDelay = Math.max(1, seconds + wave * waveInterval);
         await Notifications.scheduleNotificationAsync({
           identifier: `alarm-wave-test-${alarm.id}-${wave}`,
           content: {
@@ -415,6 +446,8 @@ export const AlarmService = {
               chapter: alarm.chapter || ref.chapter,
               ringtoneId: ringtoneKey,
               customAudioUri: alarm.customAudioUri,
+              customAudioDuration: alarm.customAudioDuration,
+              customAudioStartOffset: alarm.customAudioStartOffset || 0,
               isSpiritualAlarm: true,
               waveIndex: wave,
             },
@@ -435,7 +468,7 @@ export const AlarmService = {
   },
 
   /**
-   * Snoozes an alarm for a given number of minutes (default 5 minutes) with continuous waves
+   * Snoozes an alarm for a given number of minutes (default 5 minutes)
    */
   async snoozeAlarm(
     alarm: {
@@ -443,6 +476,8 @@ export const AlarmService = {
       label: string;
       ringtoneId?: string;
       customAudioUri?: string;
+      customAudioDuration?: number;
+      customAudioStartOffset?: number;
       customText?: string;
       customCitation?: string;
       bookId?: number;
@@ -466,13 +501,22 @@ export const AlarmService = {
       const verseBody = alarm.customText || 'The Lord is my shepherd; I shall not want.';
 
       const ringtoneKey =
-        alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'chimes';
-      const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.chimes;
+        alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'classic_bell';
+      const ringtoneConf = RINGTONE_SOUND_MAP[ringtoneKey] || RINGTONE_SOUND_MAP.classic_bell;
       const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
       const soundFileName = ringtoneConf.soundFile;
 
-      for (let wave = 0; wave < ALARM_WAVES_COUNT; wave++) {
-        const triggerDelay = delaySeconds + wave * WAVE_INTERVAL_SECONDS;
+      const startOffset = alarm.customAudioStartOffset || 0;
+      const rawDuration = alarm.customAudioDuration || 30;
+      const effectiveDuration =
+        alarm.customAudioDuration && alarm.customAudioDuration > startOffset + 5
+          ? Math.ceil(rawDuration - startOffset)
+          : 30;
+      const waveInterval = Math.max(15, effectiveDuration);
+      const waveCount = Math.min(8, Math.max(3, Math.ceil(180 / waveInterval)));
+
+      for (let wave = 0; wave < waveCount; wave++) {
+        const triggerDelay = delaySeconds + wave * waveInterval;
         await Notifications.scheduleNotificationAsync({
           identifier: `alarm-wave-snooze-${alarm.id}-${wave}`,
           content: {
@@ -494,6 +538,8 @@ export const AlarmService = {
               chapter: alarm.chapter || ref.chapter,
               ringtoneId: ringtoneKey,
               customAudioUri: alarm.customAudioUri,
+              customAudioDuration: alarm.customAudioDuration,
+              customAudioStartOffset: alarm.customAudioStartOffset || 0,
               isSpiritualAlarm: true,
               waveIndex: wave,
             },
@@ -513,7 +559,7 @@ export const AlarmService = {
   },
 
   /**
-   * Dismisses all active alarm notifications and cancels pending alarm wave bursts
+   * Dismisses all active alarm notifications and cancels pending alarm waves
    */
   async dismissActiveAlarm(): Promise<void> {
     if (Platform.OS === 'web') return;

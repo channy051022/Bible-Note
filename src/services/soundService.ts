@@ -1,4 +1,4 @@
-import { Audio } from 'expo-av';
+import { Audio, AVPlaybackStatus } from 'expo-av';
 
 let alarmSoundObject: Audio.Sound | null = null;
 let previewSoundObject: Audio.Sound | null = null;
@@ -10,9 +10,30 @@ const SOUND_ASSETS: Record<string, any> = {
   cathedral: require('../../assets/cathedral_bells.wav'),
   harp: require('../../assets/morning_harp.wav'),
   piano: require('../../assets/peaceful_piano.wav'),
+  classic_bell: require('../../assets/classic_phone_bell.wav'),
+  digital_alarm: require('../../assets/digital_alarm_beeps.wav'),
+  marimba: require('../../assets/modern_marimba.wav'),
 };
 
 export const BUILT_IN_RINGTONES = [
+  {
+    id: 'classic_bell',
+    title: '☎️ Classic Phone Ringing',
+    description: 'Traditional loud telephone twin-bell ringing',
+    assetKey: 'classic_bell' as const,
+  },
+  {
+    id: 'digital_alarm',
+    title: '⏰ Digital Alarm Clock Beeps',
+    description: 'Crisp high-pitch 4-beep digital clock buzzer',
+    assetKey: 'digital_alarm' as const,
+  },
+  {
+    id: 'marimba',
+    title: '🎶 Modern Marimba Chimes',
+    description: 'Modern smartphone marimba wake-up melody',
+    assetKey: 'marimba' as const,
+  },
   {
     id: 'chimes',
     title: '🔔 Energetic Wake Chimes',
@@ -53,9 +74,13 @@ export const BUILT_IN_RINGTONES = [
 
 export const SoundService = {
   /**
-   * Plays the looping spiritual chime or custom music alarm ringtone
+   * Plays the looping spiritual chime or custom music alarm ringtone starting at startOffsetSeconds
    */
-  async playAlarmRingtone(ringtoneId?: string, customUri?: string) {
+  async playAlarmRingtone(
+    ringtoneId?: string,
+    customUri?: string,
+    startOffsetSeconds: number = 0
+  ) {
     try {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
@@ -71,38 +96,46 @@ export const SoundService = {
       if (customUri) {
         source = { uri: customUri };
       } else {
-        const key = ringtoneId && SOUND_ASSETS[ringtoneId] ? ringtoneId : 'chimes';
-        source = SOUND_ASSETS[key] || SOUND_ASSETS.chimes;
+        const key = ringtoneId && SOUND_ASSETS[ringtoneId] ? ringtoneId : 'classic_bell';
+        source = SOUND_ASSETS[key] || SOUND_ASSETS.classic_bell;
       }
+
+      const startPosMillis = Math.max(0, Math.floor(startOffsetSeconds * 1000));
 
       try {
         const { sound } = await Audio.Sound.createAsync(
           source,
           {
             shouldPlay: true,
-            isLooping: true,
+            isLooping: false,
+            positionMillis: startPosMillis,
             volume: 1.0,
           },
-          (status) => {
+          (status: AVPlaybackStatus) => {
             if (status.isLoaded && status.didJustFinish) {
-              sound.replayAsync().catch(() => {});
+              // Rewind to the user's chosen cut/start point and replay in a continuous loop
+              sound
+                .setPositionAsync(startPosMillis)
+                .then(() => {
+                  sound.playAsync().catch(() => {});
+                })
+                .catch(() => {});
             }
           }
         );
         alarmSoundObject = sound;
-        await sound.setIsLoopingAsync(true);
         await sound.playAsync();
       } catch (assetErr) {
-        console.warn('Initial alarm sound source failed, falling back to chimes:', assetErr);
-        // Fallback to built-in chimes if custom URI or asset had an issue
+        console.warn('Initial alarm sound source failed, falling back to classic bell:', assetErr);
+        // Fallback to built-in classic bell
         const { sound } = await Audio.Sound.createAsync(
-          SOUND_ASSETS.chimes,
+          SOUND_ASSETS.classic_bell,
           {
             shouldPlay: true,
             isLooping: true,
             volume: 1.0,
           },
-          (status) => {
+          (status: AVPlaybackStatus) => {
             if (status.isLoaded && status.didJustFinish) {
               sound.replayAsync().catch(() => {});
             }
@@ -118,9 +151,14 @@ export const SoundService = {
   },
 
   /**
-   * Previews a ringtone or custom music track briefly
+   * Previews a ringtone or custom music track starting at startOffsetSeconds
    */
-  async previewRingtone(ringtoneId?: string, customUri?: string) {
+  async previewRingtone(
+    ringtoneId?: string,
+    customUri?: string,
+    startOffsetSeconds: number = 0,
+    onStatusUpdate?: (status: AVPlaybackStatus) => void
+  ): Promise<Audio.Sound | null> {
     try {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
@@ -134,23 +172,29 @@ export const SoundService = {
       if (customUri) {
         source = { uri: customUri };
       } else {
-        const key = ringtoneId && SOUND_ASSETS[ringtoneId] ? ringtoneId : 'chimes';
-        source = SOUND_ASSETS[key];
+        const key = ringtoneId && SOUND_ASSETS[ringtoneId] ? ringtoneId : 'classic_bell';
+        source = SOUND_ASSETS[key] || SOUND_ASSETS.classic_bell;
       }
+
+      const startPosMillis = Math.max(0, Math.floor(startOffsetSeconds * 1000));
 
       const { sound } = await Audio.Sound.createAsync(
         source,
         {
           shouldPlay: true,
           isLooping: false,
+          positionMillis: startPosMillis,
           volume: 1.0,
-        }
+        },
+        onStatusUpdate
       );
 
       previewSoundObject = sound;
       await sound.playAsync();
+      return sound;
     } catch (e) {
       console.warn('Error previewing ringtone:', e);
+      return null;
     }
   },
 

@@ -25,6 +25,7 @@ interface ActiveAlarmModalProps {
   chapter: number;
   ringtoneId?: string;
   customAudioUri?: string;
+  customAudioStartOffset?: number;
 }
 
 export const ActiveAlarmModal: React.FC<ActiveAlarmModalProps> = ({
@@ -37,6 +38,7 @@ export const ActiveAlarmModal: React.FC<ActiveAlarmModalProps> = ({
   chapter,
   ringtoneId,
   customAudioUri,
+  customAudioStartOffset = 0,
 }) => {
   const router = useRouter();
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -49,8 +51,8 @@ export const ActiveAlarmModal: React.FC<ActiveAlarmModalProps> = ({
       return;
     }
 
-    // 1. Play chosen ringtone or custom imported music
-    SoundService.playAlarmRingtone(ringtoneId, customAudioUri);
+    // 1. Play chosen ringtone or custom imported music from chosen start offset
+    SoundService.playAlarmRingtone(ringtoneId, customAudioUri, customAudioStartOffset);
 
     // 2. Trigger haptic vibration pulses
     const hapticInterval = setInterval(() => {
@@ -124,6 +126,7 @@ export const ActiveAlarmModal: React.FC<ActiveAlarmModalProps> = ({
         label: 'Spiritual Alarm',
         ringtoneId,
         customAudioUri,
+        customAudioStartOffset,
         customText: verseText,
         customCitation: citation,
         bookId,

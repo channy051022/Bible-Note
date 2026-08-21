@@ -243,6 +243,113 @@ def gen_piano(filename="assets/peaceful_piano.wav", duration=28.0):
                 h3 = 0.25 * math.sin(2.0 * math.pi * (freq * 3.0) * t) * math.exp(-3.5 * t)
                 samples[idx] += (h1 + h2 + h3) * env * 0.7
                 
+def gen_classic_bell(filename="assets/classic_phone_bell.wav", duration=28.0):
+    sr = 44100
+    total = int(sr * duration)
+    samples = [0.0] * total
+    
+    # Classic telephone dual bell: 440 Hz & 480 Hz modulated with 20 Hz clapper striking
+    cycle_len = 3.5  # 1.8s ring, 1.7s pause
+    num_cycles = int(duration / cycle_len) + 2
+    
+    for cycle in range(num_cycles):
+        base_t = cycle * cycle_len
+        ring_duration = 1.8
+        st_idx = int(base_t * sr)
+        ln = int(ring_duration * sr)
+        
+        for i in range(ln):
+            idx = st_idx + i
+            if idx >= total: break
+            t = i / sr
+            # 20 Hz bell clapper amplitude modulation
+            clapper = 0.5 + 0.5 * math.sin(2.0 * math.pi * 20.0 * t)
+            # Dual frequency metallic telephone bell resonance
+            s1 = math.sin(2.0 * math.pi * 440.0 * t)
+            s2 = math.sin(2.0 * math.pi * 480.0 * t)
+            s3 = 0.3 * math.sin(2.0 * math.pi * 880.0 * t)
+            s4 = 0.2 * math.sin(2.0 * math.pi * 1200.0 * t)
+            
+            # Attack and release of each ring burst
+            burst_env = min(1.0, t * 20.0) * min(1.0, (ring_duration - t) * 15.0)
+            samples[idx] += (s1 + s2 + s3 + s4) * clapper * burst_env * 0.75
+
+    write_wav(filename, samples, sr)
+
+def gen_digital_alarm(filename="assets/digital_alarm_beeps.wav", duration=28.0):
+    sr = 44100
+    total = int(sr * duration)
+    samples = [0.0] * total
+    
+    # Classic Digital Clock Beep-Beep-Beep-Beep alarm
+    # 4 beeps in 0.8s, then 0.7s pause = 1.5s cycle
+    cycle_len = 1.5
+    num_cycles = int(duration / cycle_len) + 2
+    beep_len = 0.10
+    beep_interval = 0.18
+    freq = 2048.0 # Crisp digital piezo buzzer frequency
+    
+    for cycle in range(num_cycles):
+        base_t = cycle * cycle_len
+        for b in range(4):
+            b_start = base_t + b * beep_interval
+            st_idx = int(b_start * sr)
+            ln = int(beep_len * sr)
+            for i in range(ln):
+                idx = st_idx + i
+                if idx >= total: break
+                t = i / sr
+                env = min(1.0, t * 200.0) * min(1.0, (beep_len - t) * 200.0)
+                # Piezo square/sine harmonic combination
+                tone = math.sin(2.0 * math.pi * freq * t) + 0.3 * math.sin(2.0 * math.pi * (freq * 2.0) * t)
+                samples[idx] += tone * env * 0.85
+
+    write_wav(filename, samples, sr)
+
+def gen_marimba(filename="assets/modern_marimba.wav", duration=28.0):
+    sr = 44100
+    total = int(sr * duration)
+    samples = [0.0] * total
+    
+    # Modern Smartphone Marimba Melody
+    # Upbeat rising arpeggio pattern
+    motif = [
+        (0.0, 587.33, 0.45),  # D5
+        (0.18, 659.25, 0.45), # E5
+        (0.36, 783.99, 0.45), # G5
+        (0.54, 880.00, 0.45), # A5
+        (0.72, 1046.50, 0.65),# C6
+        (1.08, 880.00, 0.45), # A5
+        (1.26, 1046.50, 0.45),# C6
+        (1.44, 1174.66, 0.8), # D6
+        
+        (2.16, 1046.50, 0.45),# C6
+        (2.34, 880.00, 0.45), # A5
+        (2.52, 783.99, 0.45), # G5
+        (2.70, 659.25, 0.45), # E5
+        (2.88, 587.33, 0.9),  # D5
+    ]
+    loop_len = 4.2
+    num_loops = int(duration / loop_len) + 2
+    
+    for loop in range(num_loops):
+        base_t = loop * loop_len
+        for start, freq, d in motif:
+            t_start = base_t + start
+            st_idx = int(t_start * sr)
+            ln = int(d * sr)
+            for i in range(ln):
+                idx = st_idx + i
+                if idx >= total: break
+                t = i / sr
+                # Wooden marimba percussive envelope
+                env = math.exp(-6.0 * (t / d)) * min(1.0, t * 300.0)
+                # Marimba body resonance
+                m1 = math.sin(2.0 * math.pi * freq * t)
+                m2 = 0.4 * math.sin(2.0 * math.pi * (freq * 3.0) * t) * math.exp(-12.0 * t)
+                m3 = 0.2 * math.sin(2.0 * math.pi * (freq * 4.0) * t) * math.exp(-20.0 * t)
+                samples[idx] += (m1 + m2 + m3) * env * 0.9
+
     write_wav(filename, samples, sr)
 
 def gen_default_alarm(filename="assets/spiritual_alarm.wav", duration=28.0):
@@ -260,6 +367,9 @@ if __name__ == "__main__":
         ("cathedral_bells.wav", gen_cathedral),
         ("morning_harp.wav", gen_harp),
         ("peaceful_piano.wav", gen_piano),
+        ("classic_phone_bell.wav", gen_classic_bell),
+        ("digital_alarm_beeps.wav", gen_digital_alarm),
+        ("modern_marimba.wav", gen_marimba),
         ("spiritual_alarm.wav", gen_default_alarm),
     ]
     

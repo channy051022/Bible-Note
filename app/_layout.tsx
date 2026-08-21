@@ -68,6 +68,7 @@ function RootNavigationLayout() {
     chapter: number;
     ringtoneId?: string;
     customAudioUri?: string;
+    customAudioStartOffset?: number;
   } | null>(null);
 
   useEffect(() => {
@@ -90,6 +91,7 @@ function RootNavigationLayout() {
           chapter: Number(data.chapter) || 23,
           ringtoneId: data.ringtoneId as string,
           customAudioUri: data.customAudioUri as string,
+          customAudioStartOffset: Number(data.customAudioStartOffset) || 0,
         });
       }
     }).catch(() => {});
@@ -107,6 +109,7 @@ function RootNavigationLayout() {
           chapter: Number(data.chapter) || 23,
           ringtoneId: data.ringtoneId as string,
           customAudioUri: data.customAudioUri as string,
+          customAudioStartOffset: Number(data.customAudioStartOffset) || 0,
         });
       }
     });
@@ -130,6 +133,7 @@ function RootNavigationLayout() {
           chapter: Number(data.chapter) || 23,
           ringtoneId: data.ringtoneId as string,
           customAudioUri: data.customAudioUri as string,
+          customAudioStartOffset: Number(data.customAudioStartOffset) || 0,
         });
       }
     });
@@ -260,6 +264,7 @@ function RootNavigationLayout() {
           chapter={activeAlarm.chapter}
           ringtoneId={activeAlarm.ringtoneId}
           customAudioUri={activeAlarm.customAudioUri}
+          customAudioStartOffset={activeAlarm.customAudioStartOffset}
         />
       )}
     </>

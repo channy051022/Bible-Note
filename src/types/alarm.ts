@@ -22,6 +22,8 @@ export interface SpiritualAlarm {
   ringtoneId?: string;
   customAudioUri?: string;
   customAudioName?: string;
+  customAudioDuration?: number; // Duration in seconds of custom picked music
+  customAudioStartOffset?: number; // Start timestamp in seconds (audio cut/trim point)
   /** @deprecated Alarms now loop continuously until dismissed or snoozed */
   durationSeconds?: number;
 }

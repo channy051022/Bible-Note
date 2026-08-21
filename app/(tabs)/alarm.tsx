@@ -17,6 +17,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as DocumentPicker from 'expo-document-picker';
+import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
 import { SpiritualAlarm } from '../../src/types/alarm';
@@ -154,10 +155,18 @@ export default function AlarmScreen() {
   const [customVerseText, setCustomVerseText] = useState<string>(
     'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'
   );
-  const [selectedRingtoneId, setSelectedRingtoneId] = useState<string>('chimes');
+  const [selectedRingtoneId, setSelectedRingtoneId] = useState<string>('classic_bell');
   const [customAudioUri, setCustomAudioUri] = useState<string | undefined>(undefined);
   const [customAudioName, setCustomAudioName] = useState<string | undefined>(undefined);
+  const [customAudioDuration, setCustomAudioDuration] = useState<number | undefined>(undefined);
+  const [customAudioStartOffset, setCustomAudioStartOffset] = useState<number>(0);
   const [previewingRingtoneId, setPreviewingRingtoneId] = useState<string | null>(null);
+
+  // Audio Trimmer Sub-Modal state
+  const [trimmerModalVisible, setTrimmerModalVisible] = useState<boolean>(false);
+  const [tempTrimSeconds, setTempTrimSeconds] = useState<number>(0);
+  const [isTrimmerPlaying, setIsTrimmerPlaying] = useState<boolean>(false);
+  const [trimmerPlaybackSeconds, setTrimmerPlaybackSeconds] = useState<number>(0);
 
   // Interactive Bible Scripture Picker state
   const [pickerBookId, setPickerBookId] = useState<number>(43); // John
@@ -358,6 +367,73 @@ export default function AlarmScreen() {
     }
   };
 
+  const formatMinutesSeconds = (sec: number = 0) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const openTrimmerModal = () => {
+    SoundService.stopPreview();
+    setPreviewingRingtoneId(null);
+    setTempTrimSeconds(customAudioStartOffset || 0);
+    setTrimmerPlaybackSeconds(customAudioStartOffset || 0);
+    setIsTrimmerPlaying(false);
+    setTrimmerModalVisible(true);
+  };
+
+  const closeTrimmerModal = () => {
+    SoundService.stopPreview();
+    setIsTrimmerPlaying(false);
+    setTrimmerModalVisible(false);
+  };
+
+  const handleSaveTrim = () => {
+    SoundService.stopPreview();
+    setIsTrimmerPlaying(false);
+    setCustomAudioStartOffset(tempTrimSeconds);
+    setTrimmerModalVisible(false);
+    Alert.alert(
+      'Cut Point Saved! ✂️',
+      `Your alarm will begin playing from ${formatMinutesSeconds(tempTrimSeconds)} and loop from there.`
+    );
+  };
+
+  const handleToggleTrimPlay = async () => {
+    if (isTrimmerPlaying) {
+      await SoundService.stopPreview();
+      setIsTrimmerPlaying(false);
+    } else {
+      setIsTrimmerPlaying(true);
+      setTrimmerPlaybackSeconds(tempTrimSeconds);
+      await SoundService.previewRingtone(
+        'custom',
+        customAudioUri,
+        tempTrimSeconds,
+        (status: any) => {
+          if (status.isLoaded) {
+            if (status.positionMillis !== undefined) {
+              setTrimmerPlaybackSeconds(Math.floor(status.positionMillis / 1000));
+            }
+            if (status.didJustFinish) {
+              setIsTrimmerPlaying(false);
+              setTrimmerPlaybackSeconds(tempTrimSeconds);
+            }
+          }
+        }
+      );
+    }
+  };
+
+  const adjustTrimSeconds = (delta: number) => {
+    SoundService.stopPreview();
+    setIsTrimmerPlaying(false);
+    const maxLen = Math.max(10, (customAudioDuration || 180) - 3);
+    const next = Math.max(0, Math.min(maxLen, tempTrimSeconds + delta));
+    setTempTrimSeconds(next);
+    setTrimmerPlaybackSeconds(next);
+  };
+
   const handlePickCustomMusic = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -370,7 +446,30 @@ export default function AlarmScreen() {
         setCustomAudioUri(file.uri);
         setCustomAudioName(file.name);
         setSelectedRingtoneId('custom');
-        handlePreviewRingtone('custom', file.uri);
+        setCustomAudioStartOffset(0);
+
+        // Extract song duration so looping waves are spaced precisely according to song length
+        let detectedDuration = 180;
+        try {
+          const { sound, status } = await Audio.Sound.createAsync(
+            { uri: file.uri },
+            { shouldPlay: false }
+          );
+          if (status.isLoaded && status.durationMillis) {
+            const durSec = Math.round(status.durationMillis / 1000);
+            detectedDuration = durSec;
+            setCustomAudioDuration(durSec);
+          }
+          await sound.unloadAsync();
+        } catch (durErr) {
+          console.warn('Could not read custom audio duration:', durErr);
+        }
+
+        // Open trimmer modal immediately so user can choose starting point if desired
+        setTempTrimSeconds(0);
+        setTrimmerPlaybackSeconds(0);
+        setIsTrimmerPlaying(false);
+        setTrimmerModalVisible(true);
       }
     } catch (e) {
       Alert.alert('Error', 'Unable to pick music file from phone storage.');
@@ -409,9 +508,11 @@ export default function AlarmScreen() {
         setSelectedPresetId('daily');
       }
 
-      setSelectedRingtoneId(alarmToEdit.ringtoneId || 'chimes');
+      setSelectedRingtoneId(alarmToEdit.ringtoneId || 'classic_bell');
       setCustomAudioUri(alarmToEdit.customAudioUri);
       setCustomAudioName(alarmToEdit.customAudioName);
+      setCustomAudioDuration(alarmToEdit.customAudioDuration);
+      setCustomAudioStartOffset(alarmToEdit.customAudioStartOffset || 0);
       setCustomVerseCitation(alarmToEdit.customCitation || 'John 3:16');
       setCustomVerseText(
         alarmToEdit.customText ||
@@ -430,9 +531,11 @@ export default function AlarmScreen() {
       setAlarmLabel('Morning Scripture & Prayer');
       setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
       setSelectedPresetId('daily');
-      setSelectedRingtoneId('chimes');
+      setSelectedRingtoneId('classic_bell');
       setCustomAudioUri(undefined);
       setCustomAudioName(undefined);
+      setCustomAudioDuration(undefined);
+      setCustomAudioStartOffset(0);
       setCustomVerseCitation('John 3:16');
       setCustomVerseText(
         'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'
@@ -499,6 +602,8 @@ export default function AlarmScreen() {
       ringtoneId: selectedRingtoneId,
       customAudioUri: selectedRingtoneId === 'custom' ? customAudioUri : undefined,
       customAudioName: selectedRingtoneId === 'custom' ? customAudioName : undefined,
+      customAudioDuration: selectedRingtoneId === 'custom' ? customAudioDuration : undefined,
+      customAudioStartOffset: selectedRingtoneId === 'custom' ? customAudioStartOffset : 0,
     };
 
     const updated = await AlarmService.saveAlarm(newAlarm);
@@ -738,7 +843,13 @@ export default function AlarmScreen() {
             const timeFormatted = AlarmService.formatTime(alarm.hour, alarm.minute);
             const daysFormatted = AlarmService.formatDays(alarm.days);
             const builtIn = BUILT_IN_RINGTONES.find((r) => r.id === alarm.ringtoneId);
-            const ringtoneName = alarm.customAudioName ? `🎵 ${alarm.customAudioName}` : builtIn?.title || '🕊️ Heavenly Chimes';
+            const ringtoneName = alarm.customAudioName
+              ? `🎵 ${alarm.customAudioName}${
+                  alarm.customAudioStartOffset && alarm.customAudioStartOffset > 0
+                    ? ` (Starts at ${formatMinutesSeconds(alarm.customAudioStartOffset)})`
+                    : ''
+                }`
+              : builtIn?.title || '🕊️ Heavenly Chimes';
 
             return (
               <TouchableOpacity
@@ -1603,70 +1714,91 @@ export default function AlarmScreen() {
                     );
                   })}
 
-                  {/* Custom Imported Music Item (if loaded) */}
+                  {/* Custom Imported Song Item */}
                   {customAudioUri && (
-                    <TouchableOpacity
+                    <View
                       style={[
                         styles.ringtoneItem,
                         {
-                          backgroundColor: selectedRingtoneId === 'custom' ? colors.tintLight : colors.glassInput,
+                          backgroundColor: selectedRingtoneId === 'custom' ? colors.glassInput : 'transparent',
                           borderColor: selectedRingtoneId === 'custom' ? colors.tint : colors.border,
+                          flexDirection: 'column',
+                          alignItems: 'stretch',
                         },
                       ]}
-                      onPress={() => {
-                        setSelectedRingtoneId('custom');
-                        setIsRingtoneDropdownOpen(false);
-                      }}
-                      activeOpacity={0.7}
                     >
-                      <Ionicons
-                        name={selectedRingtoneId === 'custom' ? 'radio-button-on' : 'radio-button-off'}
-                        size={18}
-                        color={selectedRingtoneId === 'custom' ? colors.tint : colors.textSecondary}
-                        style={{ marginRight: 10 }}
-                      />
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.ringtoneTitle, { color: selectedRingtoneId === 'custom' ? colors.tint : colors.text }]}>
-                          🎵 {customAudioName || 'Custom Imported Music'}
-                        </Text>
-                        <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
-                          Imported from your phone storage
-                        </Text>
-                      </View>
-
                       <TouchableOpacity
-                        style={[
-                          styles.previewAudioBtn,
-                          {
-                            backgroundColor: previewingRingtoneId === 'custom' ? colors.tint : colors.glassCard,
-                            borderColor: colors.border,
-                            marginRight: 6,
-                          },
-                        ]}
-                        onPress={() => handlePreviewRingtone('custom', customAudioUri)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{ flexDirection: 'row', alignItems: 'center' }}
+                        onPress={() => {
+                          setSelectedRingtoneId('custom');
+                          handlePreviewRingtone('custom', customAudioUri);
+                        }}
+                        activeOpacity={0.7}
                       >
                         <Ionicons
-                          name={previewingRingtoneId === 'custom' ? 'stop' : 'play'}
-                          size={14}
-                          color={previewingRingtoneId === 'custom' ? '#FFFFFF' : colors.tint}
+                          name={selectedRingtoneId === 'custom' ? 'radio-button-on' : 'radio-button-off'}
+                          size={18}
+                          color={selectedRingtoneId === 'custom' ? colors.tint : colors.textSecondary}
+                          style={{ marginRight: 10 }}
                         />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.ringtoneTitle, { color: selectedRingtoneId === 'custom' ? colors.tint : colors.text }]}>
+                            🎵 {customAudioName || 'Custom Imported Music'}
+                          </Text>
+                          <Text style={[styles.ringtoneDesc, { color: colors.textSecondary }]}>
+                            Length: {formatMinutesSeconds(customAudioDuration || 0)} • Starts at: {formatMinutesSeconds(customAudioStartOffset || 0)}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.previewAudioBtn,
+                            {
+                              backgroundColor: previewingRingtoneId === 'custom' ? colors.tint : colors.glassCard,
+                              borderColor: colors.border,
+                              marginRight: 6,
+                            },
+                          ]}
+                          onPress={() => handlePreviewRingtone('custom', customAudioUri)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name={previewingRingtoneId === 'custom' ? 'stop' : 'play'}
+                            size={14}
+                            color={previewingRingtoneId === 'custom' ? '#FFFFFF' : colors.tint}
+                          />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => {
+                            SoundService.stopPreview();
+                            setCustomAudioUri(undefined);
+                            setCustomAudioName(undefined);
+                            setCustomAudioStartOffset(0);
+                            if (selectedRingtoneId === 'custom') {
+                              setSelectedRingtoneId('classic_bell');
+                            }
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#FF3B30" />
+                        </TouchableOpacity>
                       </TouchableOpacity>
 
+                      {/* Cut / Choose Start Point Button */}
                       <TouchableOpacity
-                        onPress={() => {
-                          SoundService.stopPreview();
-                          setCustomAudioUri(undefined);
-                          setCustomAudioName(undefined);
-                          if (selectedRingtoneId === 'custom') {
-                            setSelectedRingtoneId('chimes');
-                          }
-                        }}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={[styles.trimCutBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                        onPress={openTrimmerModal}
+                        activeOpacity={0.7}
                       >
-                        <Ionicons name="trash-outline" size={16} color="#FF3B30" />
+                        <Ionicons name="cut" size={15} color={colors.tint} style={{ marginRight: 6 }} />
+                        <Text style={[styles.trimCutBtnText, { color: colors.tint }]}>
+                          {customAudioStartOffset && customAudioStartOffset > 0
+                            ? `✂️ Cut Point: Starts at ${formatMinutesSeconds(customAudioStartOffset)} (Change)`
+                            : '✂️ Cut Song / Choose Start Point (Chorus, Intro...)'}
+                        </Text>
                       </TouchableOpacity>
-                    </TouchableOpacity>
+                    </View>
                   )}
 
                   {/* Import Custom Music Button */}
@@ -1691,6 +1823,213 @@ export default function AlarmScreen() {
               >
                 <Text style={styles.saveAlarmBtnText}>
                   {editingAlarmId ? '💾 Save Alarm Changes' : '🔔 Create Spiritual Alarm'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Sub-Modal: Audio Trimmer & Start-Point Cutter */}
+      <Modal visible={trimmerModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.subModalSheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="cut" size={18} color={colors.tint} style={{ marginRight: 6 }} />
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Cut & Choose Start Point</Text>
+              </View>
+              <TouchableOpacity onPress={closeTrimmerModal}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 14, lineHeight: 18 }}>
+                Select the exact point in the song where your alarm should start ringing (e.g. chorus, drop, or favorite verse).
+              </Text>
+
+              {/* Song Banner */}
+              <View style={[styles.trimmerSongBanner, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
+                <Ionicons name="musical-notes" size={22} color={colors.tint} style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.trimmerSongTitle, { color: colors.text }]} numberOfLines={1}>
+                    {customAudioName || 'Custom Audio Track'}
+                  </Text>
+                  <Text style={[styles.trimmerSongDesc, { color: colors.textSecondary }]}>
+                    Total Track Length: {formatMinutesSeconds(customAudioDuration || 180)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Large Start-Time Display Card */}
+              <View style={[styles.trimmerDisplayCard, { backgroundColor: colors.glassCard, borderColor: colors.tint }]}>
+                <Text style={[styles.trimmerStartLabel, { color: colors.textSecondary }]}>ALARM STARTS AT</Text>
+                <Text style={[styles.trimmerTimeValue, { color: colors.tint }]}>
+                  {formatMinutesSeconds(tempTrimSeconds)}
+                </Text>
+                <Text style={[styles.trimmerPlayingStatus, { color: colors.textSecondary }]}>
+                  {isTrimmerPlaying
+                    ? `▶️ Playing preview: ${formatMinutesSeconds(trimmerPlaybackSeconds)} / ${formatMinutesSeconds(customAudioDuration || 180)}`
+                    : `Alarm rings from ${formatMinutesSeconds(tempTrimSeconds)} to end and loops.`}
+                </Text>
+
+                {/* Visual Timeline Scrubber Progress Bar */}
+                <View style={[styles.trimmerScrubberBar, { backgroundColor: colors.border }]}>
+                  <View
+                    style={[
+                      styles.trimmerScrubberFill,
+                      {
+                        backgroundColor: colors.tint,
+                        width: `${Math.min(100, Math.max(0, (tempTrimSeconds / (customAudioDuration || 180)) * 100))}%`,
+                      },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.trimmerScrubberMarker,
+                      {
+                        left: `${Math.min(96, Math.max(0, (tempTrimSeconds / (customAudioDuration || 180)) * 100))}%`,
+                        backgroundColor: colors.tint,
+                      },
+                    ]}
+                  />
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 4 }}>
+                  <Text style={{ fontSize: 10, color: colors.textSecondary }}>0:00</Text>
+                  <Text style={{ fontSize: 10, color: colors.textSecondary }}>{formatMinutesSeconds(customAudioDuration || 180)}</Text>
+                </View>
+              </View>
+
+              {/* Stepper Fine-Tune Controls */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 16, marginBottom: 8 }]}>
+                FINE-TUNE START POINT (SECONDS)
+              </Text>
+              <View style={styles.trimmerStepperRow}>
+                <TouchableOpacity
+                  style={[styles.trimmerStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                  onPress={() => adjustTrimSeconds(-30)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.trimmerStepBtnText, { color: colors.text }]}>-30s</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.trimmerStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                  onPress={() => adjustTrimSeconds(-10)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.trimmerStepBtnText, { color: colors.text }]}>-10s</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.trimmerStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                  onPress={() => adjustTrimSeconds(-1)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.trimmerStepBtnText, { color: colors.text }]}>-1s</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.trimmerStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                  onPress={() => adjustTrimSeconds(1)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.trimmerStepBtnText, { color: colors.text }]}>+1s</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.trimmerStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                  onPress={() => adjustTrimSeconds(10)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.trimmerStepBtnText, { color: colors.text }]}>+10s</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.trimmerStepBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                  onPress={() => adjustTrimSeconds(30)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.trimmerStepBtnText, { color: colors.text }]}>+30s</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Quick Jump Shortcuts */}
+              <Text style={[styles.modalSectionLabel, { color: colors.textSecondary, marginTop: 14, marginBottom: 8 }]}>
+                QUICK JUMP SHORTCUTS
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {[
+                  { label: '0:00 (Intro)', sec: 0 },
+                  { label: '0:15', sec: 15 },
+                  { label: '0:30 (Verse)', sec: 30 },
+                  { label: '0:45 (Chorus)', sec: 45 },
+                  { label: '1:00', sec: 60 },
+                  { label: '1:30', sec: 90 },
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item.label}
+                    style={[
+                      styles.trimmerPresetPill,
+                      {
+                        backgroundColor: tempTrimSeconds === item.sec ? colors.tint : colors.glassInput,
+                        borderColor: tempTrimSeconds === item.sec ? colors.tint : colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      SoundService.stopPreview();
+                      setIsTrimmerPlaying(false);
+                      setTempTrimSeconds(item.sec);
+                      setTrimmerPlaybackSeconds(item.sec);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.trimmerPresetPillText,
+                        { color: tempTrimSeconds === item.sec ? '#FFFFFF' : colors.text },
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Live Preview Button */}
+              <TouchableOpacity
+                style={[
+                  styles.trimmerListenBtn,
+                  {
+                    backgroundColor: isTrimmerPlaying ? '#FF3B30' : colors.glassInput,
+                    borderColor: isTrimmerPlaying ? '#FF3B30' : colors.tint,
+                  },
+                ]}
+                onPress={handleToggleTrimPlay}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={isTrimmerPlaying ? 'stop-circle' : 'play-circle'}
+                  size={20}
+                  color={isTrimmerPlaying ? '#FFFFFF' : colors.tint}
+                  style={{ marginRight: 8 }}
+                />
+                <Text
+                  style={[
+                    styles.trimmerListenBtnText,
+                    { color: isTrimmerPlaying ? '#FFFFFF' : colors.tint },
+                  ]}
+                >
+                  {isTrimmerPlaying
+                    ? 'Stop Preview Audio'
+                    : `Listen from ${formatMinutesSeconds(tempTrimSeconds)}`}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Save Cut Point Button */}
+              <TouchableOpacity
+                style={[styles.trimmerSaveBtn, { backgroundColor: colors.tint }]}
+                onPress={handleSaveTrim}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.trimmerSaveBtnText}>
+                  ✂️ Set as Alarm Start Point
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -2497,5 +2836,137 @@ const styles = StyleSheet.create({
   tabBtnText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  trimCutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  trimCutBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  trimmerSongBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  trimmerSongTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  trimmerSongDesc: {
+    fontSize: 12,
+  },
+  trimmerDisplayCard: {
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  trimmerStartLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 4,
+  },
+  trimmerTimeValue: {
+    fontSize: 38,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginVertical: 4,
+  },
+  trimmerPlayingStatus: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 14,
+  },
+  trimmerScrubberBar: {
+    width: '100%',
+    height: 8,
+    borderRadius: 4,
+    overflow: 'visible',
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  trimmerScrubberFill: {
+    height: 8,
+    borderRadius: 4,
+  },
+  trimmerScrubberMarker: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    top: -4,
+  },
+  trimmerStepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    marginBottom: 10,
+  },
+  trimmerStepBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  trimmerStepBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  trimmerPresetPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  trimmerPresetPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  trimmerListenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  trimmerListenBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  trimmerSaveBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 2,
+    marginBottom: 20,
+  },
+  trimmerSaveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
   },
 });
