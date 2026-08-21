@@ -47,9 +47,10 @@ export const RINGTONE_SOUND_MAP: Record<string, RingtoneChannelConfig> = {
   },
 };
 
-// 10 continuous waves spaced 28s apart = ~5 minutes of continuous non-stop ringing
-const ALARM_WAVES_COUNT = 10;
-const WAVE_INTERVAL_SECONDS = 28;
+// 24 continuous waves spaced 5s apart = 2 minutes of continuous non-stop ringing
+// Fast 5s wave pulses ensure the audio keeps ringing even if iOS temporary banners auto-dismiss in 4s
+const ALARM_WAVES_COUNT = 24;
+const WAVE_INTERVAL_SECONDS = 5;
 
 export const AlarmService = {
   /**
@@ -226,12 +227,25 @@ export const AlarmService = {
       0
     );
 
-    // If target is today but the scheduled minute has already passed, schedule for next week
+    // If target is today but the scheduled minute has already passed (or within next 5s), schedule for next week
     if (daysUntil === 0 && target.getTime() <= now.getTime() + 5000) {
       target.setDate(target.getDate() + 7);
     }
 
     return target;
+  },
+
+  /**
+   * Calculates the earliest upcoming occurrence Date across all active days of an alarm
+   */
+  getNextUpcomingOccurrence(alarm: SpiritualAlarm): Date {
+    const days =
+      alarm.days && alarm.days.length > 0 ? alarm.days : [0, 1, 2, 3, 4, 5, 6];
+    const candidateDates = days.map((d) =>
+      this.getNextOccurrenceDate(d, alarm.hour, alarm.minute)
+    );
+    candidateDates.sort((a, b) => a.getTime() - b.getTime());
+    return candidateDates[0];
   },
 
   /**
@@ -305,52 +319,47 @@ export const AlarmService = {
         const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
         const soundFileName = ringtoneConf.soundFile;
 
-        const days =
-          alarm.days && alarm.days.length > 0 ? alarm.days : [0, 1, 2, 3, 4, 5, 6];
+        // Calculate the next upcoming occurrence time for this alarm
+        const nextOccurrenceDate = this.getNextUpcomingOccurrence(alarm);
 
-        // For each active day, calculate the next upcoming occurrence
-        for (const day of days) {
-          const nextDate = this.getNextOccurrenceDate(day, alarm.hour, alarm.minute);
+        // Schedule consecutive waves (5s apart) for continuous non-stop ringing
+        for (let wave = 0; wave < ALARM_WAVES_COUNT; wave++) {
+          const waveTimestamp = new Date(
+            nextOccurrenceDate.getTime() + wave * WAVE_INTERVAL_SECONDS * 1000
+          );
 
-          // Schedule consecutive waves (28s apart) for continuous looping
-          for (let wave = 0; wave < ALARM_WAVES_COUNT; wave++) {
-            const waveTimestamp = new Date(
-              nextDate.getTime() + wave * WAVE_INTERVAL_SECONDS * 1000
-            );
-
-            await Notifications.scheduleNotificationAsync({
-              identifier: `alarm-wave-${alarm.id}-d${day}-w${wave}`,
-              content: {
-                title: `🔔 ${timeFormatted} • ${alarm.label}`,
-                body: `✝️ ${citation}\n"${verseBody}"`,
-                sound: soundFileName,
-                priority: Notifications.AndroidNotificationPriority.MAX,
-                vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
-                categoryIdentifier: 'spiritual_alarm',
-                color: '#E5A93C',
-                autoDismiss: false,
-                sticky: false,
-                data: {
-                  alarmId: alarm.id,
-                  timeString: timeFormatted,
-                  citation,
-                  text: verseBody,
-                  bookId: alarm.bookId || ref.bookId,
-                  chapter: alarm.chapter || ref.chapter,
-                  ringtoneId: ringtoneKey,
-                  customAudioUri: alarm.customAudioUri,
-                  isSpiritualAlarm: true,
-                  waveIndex: wave,
-                },
-                interruptionLevel: 'timeSensitive',
+          await Notifications.scheduleNotificationAsync({
+            identifier: `alarm-wave-${alarm.id}-w${wave}`,
+            content: {
+              title: `🔔 ${timeFormatted} • ${alarm.label}`,
+              body: `✝️ ${citation}\n"${verseBody}"`,
+              sound: soundFileName,
+              priority: Notifications.AndroidNotificationPriority.MAX,
+              vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
+              categoryIdentifier: 'spiritual_alarm',
+              color: '#E5A93C',
+              autoDismiss: false,
+              sticky: false,
+              data: {
+                alarmId: alarm.id,
+                timeString: timeFormatted,
+                citation,
+                text: verseBody,
+                bookId: alarm.bookId || ref.bookId,
+                chapter: alarm.chapter || ref.chapter,
+                ringtoneId: ringtoneKey,
+                customAudioUri: alarm.customAudioUri,
+                isSpiritualAlarm: true,
+                waveIndex: wave,
               },
-              trigger: {
-                type: Notifications.SchedulableTriggerInputTypes.DATE,
-                date: waveTimestamp,
-                channelId,
-              } as any,
-            });
-          }
+              interruptionLevel: 'timeSensitive',
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: waveTimestamp,
+              channelId,
+            } as any,
+          });
         }
       }
     } catch (e) {
@@ -382,7 +391,7 @@ export const AlarmService = {
       const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
       const soundFileName = ringtoneConf.soundFile;
 
-      // Schedule consecutive waves (28s apart) so it loops continuously for ~5 minutes
+      // Schedule consecutive waves (5s apart) so it loops continuously
       for (let wave = 0; wave < ALARM_WAVES_COUNT; wave++) {
         const triggerDelay = Math.max(1, seconds + wave * WAVE_INTERVAL_SECONDS);
         await Notifications.scheduleNotificationAsync({

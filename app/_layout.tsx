@@ -44,13 +44,17 @@ function AppLoadingScreen() {
 
 // Configure global foreground notification presentation
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    const isAlarm = !!notification?.request?.content?.data?.isSpiritualAlarm;
+    return {
+      // In-app: ActiveAlarmModal provides the full-screen interactive UI and looping sound
+      shouldShowAlert: !isAlarm,
+      shouldPlaySound: !isAlarm,
+      shouldSetBadge: true,
+      shouldShowBanner: !isAlarm,
+      shouldShowList: !isAlarm,
+    };
+  },
 });
 
 function RootNavigationLayout() {
