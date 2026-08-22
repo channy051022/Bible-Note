@@ -176,7 +176,6 @@ struct WidgetThemeColors {
                 textPrimary: Color.white.opacity(0.95),
                 textSecondary: Color(red: 0.38, green: 0.65, blue: 0.98)
             )
-        case "glass":
         default:
             return WidgetThemeColors(
                 accent: Color(red: 0.38, green: 0.65, blue: 0.98),
