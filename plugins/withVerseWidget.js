@@ -2,65 +2,108 @@ const { withEntitlementsPlist, withAndroidManifest, withDangerousMod, withXcodeP
 const fs = require('fs');
 const path = require('path');
 
+const WIDGET_TARGET_NAME = 'VerseWidgetExtension';
+const WIDGET_BUNDLE_ID = 'com.biblenotes.app.VerseWidget';
+const APP_GROUP = 'group.com.biblenotes.app';
+
 const withVerseWidget = (config) => {
   // 1. Configure iOS App Group Entitlements for shared WidgetKit storage
   config = withEntitlementsPlist(config, (config) => {
     config.modResults['com.apple.security.application-groups'] = [
-      'group.com.biblenotes.app',
+      APP_GROUP,
     ];
     return config;
   });
 
-  // 2. Configure iOS Xcode Target for WidgetKit Extension
+  // 2. Configure iOS Xcode Project — add WidgetKit extension target with proper embedding
   config = withXcodeProject(config, (config) => {
     const xcodeProject = config.modResults;
-    const targetName = 'VerseWidget';
-    const bundleId = 'com.biblenotes.app.VerseWidget';
 
-    if (!xcodeProject.pbxTargetByName(targetName)) {
-      try {
-        const target = xcodeProject.addTarget(
-          targetName,
-          'app_extension',
-          targetName,
-          bundleId
+    // Bail out if the target already exists (re-run safety)
+    if (xcodeProject.pbxTargetByName(WIDGET_TARGET_NAME)) {
+      return config;
+    }
+
+    try {
+      // --- Create the widget extension target ---
+      const target = xcodeProject.addTarget(
+        WIDGET_TARGET_NAME,
+        'app_extension',
+        WIDGET_TARGET_NAME,
+        WIDGET_BUNDLE_ID
+      );
+
+      if (!target || !target.uuid) {
+        console.warn('withVerseWidget: Failed to create widget target');
+        return config;
+      }
+
+      // --- Add source file build phase ---
+      xcodeProject.addBuildPhase(
+        [`${WIDGET_TARGET_NAME}/VerseWidget.swift`],
+        'PBXSourcesBuildPhase',
+        'Sources',
+        target.uuid
+      );
+
+      // --- Add WidgetKit and SwiftUI frameworks to the widget target ---
+      xcodeProject.addFramework('WidgetKit.framework', {
+        target: target.uuid,
+        link: true,
+      });
+      xcodeProject.addFramework('SwiftUI.framework', {
+        target: target.uuid,
+        link: true,
+      });
+
+      // --- Configure build settings for the widget extension target ---
+      const configList = xcodeProject.pbxXCConfigurationList();
+      const targetConfigList = configList[target.pbxNativeTarget.buildConfigurationList];
+
+      if (targetConfigList && targetConfigList.buildConfigurations) {
+        for (const configRef of targetConfigList.buildConfigurations) {
+          const buildSettings = xcodeProject.pbxXCBuildConfigurationSection()[
+            configRef.value
+          ].buildSettings;
+
+          buildSettings.PRODUCT_NAME = `"${WIDGET_TARGET_NAME}"`;
+          buildSettings.PRODUCT_BUNDLE_IDENTIFIER = `"${WIDGET_BUNDLE_ID}"`;
+          buildSettings.INFOPLIST_FILE = `"${WIDGET_TARGET_NAME}/Info.plist"`;
+          buildSettings.SWIFT_VERSION = '5.0';
+          buildSettings.IPHONEOS_DEPLOYMENT_TARGET = '17.0';
+          buildSettings.TARGETED_DEVICE_FAMILY = '"1,2"';
+          buildSettings.CODE_SIGN_STYLE = 'Automatic';
+          buildSettings.GENERATE_INFOPLIST_FILE = 'NO';
+          buildSettings.SKIP_INSTALL = 'YES';
+          buildSettings.ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = 'NO';
+          buildSettings.CODE_SIGN_ENTITLEMENTS = `"${WIDGET_TARGET_NAME}/${WIDGET_TARGET_NAME}.entitlements"`;
+          buildSettings.LD_RUNPATH_SEARCH_PATHS = '"$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"';
+          // Ensure the extension links to the correct application for its container
+          buildSettings.ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = '"WidgetBackground"';
+        }
+      }
+
+      // --- Add "Embed App Extensions" Copy Files build phase to the MAIN APP target ---
+      // This embeds the .appex bundle into PlugIns/ inside the .app
+      const mainTarget = xcodeProject.getFirstTarget();
+      if (mainTarget && mainTarget.firstTarget) {
+        const mainTargetUuid = mainTarget.firstTarget.uuid;
+
+        // Add the widget product (.appex) as a file reference for embedding
+        // dstSubfolderSpec 13 = PlugIns folder
+        xcodeProject.addBuildPhase(
+          [`${WIDGET_TARGET_NAME}.appex`],
+          'PBXCopyFilesBuildPhase',
+          'Embed App Extensions',
+          mainTargetUuid,
+          'app_extension'
         );
 
-        if (target && target.uuid) {
-          xcodeProject.addBuildPhase(
-            ['VerseWidget/VerseWidget.swift'],
-            'PBXSourcesBuildPhase',
-            'Sources',
-            target.uuid
-          );
-
-          xcodeProject.addFramework('WidgetKit.framework', { target: target.uuid });
-          xcodeProject.addFramework('SwiftUI.framework', { target: target.uuid });
-
-          const configurations = xcodeProject.pbxXCConfigurationList()[
-            target.pbxNativeTarget.buildConfigurationList
-          ];
-
-          if (configurations && configurations.buildConfigurations) {
-            for (const configRef of configurations.buildConfigurations) {
-              const buildSettings = xcodeProject.pbxXCBuildConfigurationSection()[
-                configRef.value
-              ].buildSettings;
-
-              buildSettings.PRODUCT_NAME = `"${targetName}"`;
-              buildSettings.PRODUCT_BUNDLE_IDENTIFIER = `"${bundleId}"`;
-              buildSettings.INFOPLIST_FILE = `"VerseWidget/Info.plist"`;
-              buildSettings.SWIFT_VERSION = '5.0';
-              buildSettings.IPHONEOS_DEPLOYMENT_TARGET = '15.0';
-              buildSettings.TARGETED_DEVICE_FAMILY = '"1,2"';
-              buildSettings.CODE_SIGN_STYLE = 'Automatic';
-              buildSettings.GENERATE_INFOPLIST_FILE = 'NO';
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('withVerseWidget: Warning while adding Xcode widget target:', err);
+        // Add target dependency — main app depends on widget target
+        xcodeProject.addTargetDependency(mainTargetUuid, [target.uuid]);
       }
+    } catch (err) {
+      console.warn('withVerseWidget: Error while configuring Xcode widget target:', err);
     }
 
     return config;
@@ -161,7 +204,7 @@ const withVerseWidget = (config) => {
     },
   ]);
 
-  // 5. Copy iOS WidgetKit Native Files (Swift, Info.plist)
+  // 5. Copy iOS WidgetKit Native Files (Swift, Info.plist) + Generate Entitlements
   config = withDangerousMod(config, [
     'ios',
     async (config) => {
@@ -169,19 +212,38 @@ const withVerseWidget = (config) => {
       const platformRoot = config.modRequest.platformProjectRoot;
 
       const widgetSrcDir = path.join(projectRoot, 'widgets', 'ios');
-      const iosWidgetDir = path.join(platformRoot, 'VerseWidget');
+      const iosWidgetDir = path.join(platformRoot, WIDGET_TARGET_NAME);
 
       fs.mkdirSync(iosWidgetDir, { recursive: true });
 
+      // Copy Swift source file
       const swiftSrc = path.join(widgetSrcDir, 'VerseWidget.swift');
       if (fs.existsSync(swiftSrc)) {
         fs.copyFileSync(swiftSrc, path.join(iosWidgetDir, 'VerseWidget.swift'));
       }
 
+      // Copy Info.plist
       const plistSrc = path.join(widgetSrcDir, 'Info.plist');
       if (fs.existsSync(plistSrc)) {
         fs.copyFileSync(plistSrc, path.join(iosWidgetDir, 'Info.plist'));
       }
+
+      // Generate widget extension entitlements file with App Group
+      const entitlementsContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>${APP_GROUP}</string>
+    </array>
+</dict>
+</plist>
+`;
+      fs.writeFileSync(
+        path.join(iosWidgetDir, `${WIDGET_TARGET_NAME}.entitlements`),
+        entitlementsContent
+      );
 
       return config;
     },

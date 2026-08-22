@@ -64,7 +64,6 @@ jobs:
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            CODE_SIGN_ENTITLEMENTS="" \
             -destination 'generic/platform=iOS' \
             COMPILER_INDEX_STORE_ENABLE=NO \
             ARCHS="arm64" \
