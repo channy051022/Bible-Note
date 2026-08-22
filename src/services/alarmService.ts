@@ -3,15 +3,18 @@ import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as FileSystemRoot from 'expo-file-system';
 import { Platform, Alert, Linking } from 'react-native';
 import * as IntentLauncher from 'expo-intent-launcher';
+import { openDatabaseSync } from 'expo-sqlite';
 
 const FileSystem: any = (FileSystemLegacy && FileSystemLegacy.documentDirectory)
   ? FileSystemLegacy
   : FileSystemRoot;
 import { SpiritualAlarm } from '../types/alarm';
-import { getItem, setItem } from '../utils/storage';
+import { getItem, setItem, StorageKeys } from '../utils/storage';
 import { getTodayVerseRef } from '../constants/VerseOfTheDay';
 import { BIBLE_BOOKS } from '../constants/BibleBooks';
 import { SoundService } from './soundService';
+import { BibleRepo, cleanVerseText, getTableNameForVersion } from '../db/bibleRepo';
+import { BibleVersion } from '../types/bible';
 
 const ALARMS_STORAGE_KEY = 'SHEPHERD_SPIRITUAL_ALARMS';
 
@@ -26,6 +29,7 @@ export interface RingtoneChannelConfig {
   soundFile: string;
   channelId: string;
   channelName: string;
+  durationSeconds: number;
 }
 
 export const RINGTONE_SOUND_MAP: Record<string, RingtoneChannelConfig> = {
@@ -33,46 +37,55 @@ export const RINGTONE_SOUND_MAP: Record<string, RingtoneChannelConfig> = {
     soundFile: 'classic_phone_bell.wav',
     channelId: 'spiritual_alarm_classic_bell_v5',
     channelName: 'Spiritual Alarms (Classic Phone Bell)',
+    durationSeconds: 28,
   },
   digital_alarm: {
     soundFile: 'digital_alarm_beeps.wav',
     channelId: 'spiritual_alarm_digital_v5',
     channelName: 'Spiritual Alarms (Digital Clock Beeps)',
+    durationSeconds: 28,
   },
   marimba: {
     soundFile: 'modern_marimba.wav',
     channelId: 'spiritual_alarm_marimba_v5',
     channelName: 'Spiritual Alarms (Modern Marimba)',
+    durationSeconds: 28,
   },
   chimes: {
     soundFile: 'spiritual_chimes.wav',
     channelId: 'spiritual_alarm_chimes_v5',
     channelName: 'Spiritual Alarms (Wake Chimes)',
+    durationSeconds: 28,
   },
   sunrise_bell: {
     soundFile: 'radiant_sunrise_bell.wav',
     channelId: 'spiritual_alarm_sunrise_v5',
     channelName: 'Spiritual Alarms (Sunrise Bells)',
+    durationSeconds: 28,
   },
   fanfare: {
     soundFile: 'gospel_fanfare.wav',
     channelId: 'spiritual_alarm_fanfare_v5',
     channelName: 'Spiritual Alarms (Joyful Fanfare)',
+    durationSeconds: 28,
   },
   cathedral: {
     soundFile: 'cathedral_bells.wav',
     channelId: 'spiritual_alarm_cathedral_v5',
     channelName: 'Spiritual Alarms (Cathedral Bells)',
+    durationSeconds: 28,
   },
   harp: {
     soundFile: 'morning_harp.wav',
     channelId: 'spiritual_alarm_harp_v5',
     channelName: 'Spiritual Alarms (Morning Harp)',
+    durationSeconds: 28,
   },
   piano: {
     soundFile: 'peaceful_piano.wav',
     channelId: 'spiritual_alarm_piano_v5',
     channelName: 'Spiritual Alarms (Peaceful Piano)',
+    durationSeconds: 28,
   },
 };
 
@@ -529,16 +542,46 @@ export const AlarmService = {
         console.warn('Error rescheduling daily verse along with alarms:', dailyErr);
       }
 
-      // 5. Schedule sequential waves timed precisely to song length and cut point for all upcoming days
+      // 5. Resolve the actual daily verse text from the Bible database once for all alarms
+      //    so daily verse alarms show the correct scripture, not a hardcoded fallback.
+      let dailyVerseText = '';
+      let dailyVerseCitation = '';
+      let dailyVerseBookId = 43;
+      let dailyVerseChapter = 3;
+      try {
+        const ref = getTodayVerseRef();
+        const book = BIBLE_BOOKS.find((b) => b.id === ref.bookId);
+        dailyVerseCitation = `${book?.name || 'Scripture'} ${ref.chapter}:${ref.verse}`;
+        dailyVerseBookId = ref.bookId;
+        dailyVerseChapter = ref.chapter;
+
+        // Open the database directly to fetch the actual verse text
+        const db = openDatabaseSync('bible.db');
+        const version = getItem<BibleVersion>(StorageKeys.BIBLE_VERSION, 'KJV');
+        const tableName = getTableNameForVersion(version);
+        const abbrev = book?.abbreviation || 'Joh';
+        const row = db.getFirstSync<{ content: string }>(
+          `SELECT content FROM ${tableName} WHERE book = ? AND chapter = ? AND verse = ? LIMIT 1`,
+          [abbrev, ref.chapter, ref.verse]
+        );
+        if (row && row.content) {
+          dailyVerseText = cleanVerseText(row.content);
+        }
+      } catch (verseErr) {
+        console.warn('Could not fetch daily verse text from DB:', verseErr);
+      }
+
+      // 6. Schedule sequential waves for all upcoming days
       for (const alarm of alarms) {
         if (!alarm.isEnabled) continue;
 
         const ref = getTodayVerseRef();
         const book = BIBLE_BOOKS.find((b) => b.id === (alarm.bookId || ref.bookId));
         const citation =
-          alarm.customCitation || `${book?.name || 'Scripture'} ${ref.chapter}:${ref.verse}`;
+          alarm.customCitation || dailyVerseCitation || `${book?.name || 'Scripture'} ${ref.chapter}:${ref.verse}`;
         const timeFormatted = AlarmService.formatTime(alarm.hour, alarm.minute);
-        const verseBody = alarm.customText || 'The Lord is my shepherd; I shall not want.';
+        // Use actual verse text from DB for daily verse alarms, not a hardcoded fallback
+        const verseBody = alarm.customText || dailyVerseText || 'Tap to read today\'s verse.';
 
         const ringtoneKey =
           alarm.ringtoneId && RINGTONE_SOUND_MAP[alarm.ringtoneId] ? alarm.ringtoneId : 'classic_bell';
@@ -546,15 +589,16 @@ export const AlarmService = {
         const channelId = Platform.OS === 'android' ? ringtoneConf.channelId : undefined;
         const soundFileName = await this.resolveNotificationSound(alarm, ringtoneConf.soundFile);
 
-        // Determine effective wave interval based on trimmed song length (total - startOffset)
+        // Determine effective wave interval based on trimmed song length or built-in ringtone duration
         const startOffset = alarm.customAudioStartOffset || 0;
-        const rawDuration = alarm.customAudioDuration || 30;
+        const rawDuration = alarm.customAudioDuration || ringtoneConf.durationSeconds || 28;
         const effectiveDuration =
           alarm.customAudioDuration && alarm.customAudioDuration > startOffset + 5
             ? Math.ceil(rawDuration - startOffset)
-            : 30;
+            : ringtoneConf.durationSeconds || 28;
         const waveInterval = Math.max(15, effectiveDuration);
-        const waveCount = Math.min(5, Math.max(3, Math.ceil(180 / waveInterval)));
+        // Schedule up to 10 waves covering ~10 minutes of ringing (enough to wake anyone up)
+        const waveCount = Math.min(10, Math.max(5, Math.ceil(600 / waveInterval)));
 
         // A. Multi-Day Advance Scheduled Dates (Guarantees next 14 days of exact alarms trigger even when app is closed)
         //    Batched with Promise.all for speed instead of serial awaits
@@ -737,13 +781,13 @@ export const AlarmService = {
       const soundFileName = await this.resolveNotificationSound(alarm, ringtoneConf.soundFile);
 
       const startOffset = alarm.customAudioStartOffset || 0;
-      const rawDuration = alarm.customAudioDuration || 30;
+      const rawDuration = alarm.customAudioDuration || ringtoneConf.durationSeconds || 28;
       const effectiveDuration =
         alarm.customAudioDuration && alarm.customAudioDuration > startOffset + 5
           ? Math.ceil(rawDuration - startOffset)
-          : 30;
+          : ringtoneConf.durationSeconds || 28;
       const waveInterval = Math.max(15, effectiveDuration);
-      const waveCount = Math.min(5, Math.max(3, Math.ceil(180 / waveInterval)));
+      const waveCount = Math.min(10, Math.max(5, Math.ceil(600 / waveInterval)));
 
       // Schedule sequential waves spaced precisely according to song duration
       for (let wave = 0; wave < waveCount; wave++) {
@@ -831,13 +875,13 @@ export const AlarmService = {
       const soundFileName = ringtoneConf.soundFile;
 
       const startOffset = alarm.customAudioStartOffset || 0;
-      const rawDuration = alarm.customAudioDuration || 30;
+      const rawDuration = alarm.customAudioDuration || ringtoneConf.durationSeconds || 28;
       const effectiveDuration =
         alarm.customAudioDuration && alarm.customAudioDuration > startOffset + 5
           ? Math.ceil(rawDuration - startOffset)
-          : 30;
+          : ringtoneConf.durationSeconds || 28;
       const waveInterval = Math.max(15, effectiveDuration);
-      const waveCount = Math.min(5, Math.max(3, Math.ceil(180 / waveInterval)));
+      const waveCount = Math.min(10, Math.max(5, Math.ceil(600 / waveInterval)));
 
       for (let wave = 0; wave < waveCount; wave++) {
         const triggerDelay = delaySeconds + wave * waveInterval;
