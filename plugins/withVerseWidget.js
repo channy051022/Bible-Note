@@ -85,47 +85,57 @@ const withVerseWidget = (config) => {
 
       // --- Add "Embed App Extensions" Copy Files build phase to the MAIN APP target ---
       // This embeds the .appex bundle into PlugIns/ inside the .app
+      // NOTE: We create this ENTIRELY manually via hash manipulation because
+      // the xcode library's addBuildPhase for CopyFiles/app_extension auto-includes
+      // extension products, causing duplicates if we also add them explicitly.
       const mainTarget = xcodeProject.getFirstTarget();
       if (mainTarget && mainTarget.firstTarget) {
         const mainTargetUuid = mainTarget.firstTarget.uuid;
+        const widgetProductRef = target.pbxNativeTarget.productReference;
 
-        // Create an EMPTY copy files phase first (passing files to addBuildPhase
-        // would create orphaned PBXFileReference entries that break CocoaPods)
-        const embedPhase = xcodeProject.addBuildPhase(
-          [],
-          'PBXCopyFilesBuildPhase',
-          'Embed App Extensions',
-          mainTargetUuid,
-          'app_extension'
-        );
+        // 1. Create a PBXBuildFile for the widget product in the embed phase
+        const embedBuildFileUuid = xcodeProject.generateUuid();
+        xcodeProject.hash.project.objects['PBXBuildFile'][embedBuildFileUuid] = {
+          isa: 'PBXBuildFile',
+          fileRef: widgetProductRef,
+          fileRef_comment: `${WIDGET_TARGET_NAME}.appex`,
+          settings: { ATTRIBUTES: ['RemoveHeadersOnCopy'] },
+        };
+        xcodeProject.hash.project.objects['PBXBuildFile'][`${embedBuildFileUuid}_comment`] =
+          `${WIDGET_TARGET_NAME}.appex in Embed App Extensions`;
 
-        // Wire the widget's product (.appex) into the embed phase using the
-        // EXISTING product reference that addTarget already placed in the Products group
-        if (embedPhase) {
-          const widgetProductRef = target.pbxNativeTarget.productReference;
-          const buildFileUuid = xcodeProject.generateUuid();
-
-          // Register a PBXBuildFile pointing to the existing product reference
-          xcodeProject.hash.project.objects['PBXBuildFile'][buildFileUuid] = {
-            isa: 'PBXBuildFile',
-            fileRef: widgetProductRef,
-            fileRef_comment: `${WIDGET_TARGET_NAME}.appex`,
-            settings: { ATTRIBUTES: ['RemoveHeadersOnCopy'] },
-          };
-          xcodeProject.hash.project.objects['PBXBuildFile'][`${buildFileUuid}_comment`] =
-            `${WIDGET_TARGET_NAME}.appex in Embed App Extensions`;
-
-          // Add the build file to the embed phase's files list
-          const copySection = xcodeProject.hash.project.objects['PBXCopyFilesBuildPhase'];
-          if (copySection && copySection[embedPhase.uuid]) {
-            copySection[embedPhase.uuid].files.push({
-              value: buildFileUuid,
+        // 2. Create the PBXCopyFilesBuildPhase (dstSubfolderSpec 13 = PlugIns)
+        const embedPhaseUuid = xcodeProject.generateUuid();
+        if (!xcodeProject.hash.project.objects['PBXCopyFilesBuildPhase']) {
+          xcodeProject.hash.project.objects['PBXCopyFilesBuildPhase'] = {};
+        }
+        xcodeProject.hash.project.objects['PBXCopyFilesBuildPhase'][embedPhaseUuid] = {
+          isa: 'PBXCopyFilesBuildPhase',
+          buildActionMask: 2147483647,
+          dstPath: '""',
+          dstSubfolderSpec: 13,
+          files: [
+            {
+              value: embedBuildFileUuid,
               comment: `${WIDGET_TARGET_NAME}.appex in Embed App Extensions`,
-            });
-          }
+            },
+          ],
+          name: '"Embed App Extensions"',
+          runOnlyForDeploymentPostprocessing: 0,
+        };
+        xcodeProject.hash.project.objects['PBXCopyFilesBuildPhase'][`${embedPhaseUuid}_comment`] =
+          'Embed App Extensions';
+
+        // 3. Add the embed phase to the main target's buildPhases
+        const nativeTargetSection = xcodeProject.hash.project.objects['PBXNativeTarget'];
+        if (nativeTargetSection[mainTargetUuid] && nativeTargetSection[mainTargetUuid].buildPhases) {
+          nativeTargetSection[mainTargetUuid].buildPhases.push({
+            value: embedPhaseUuid,
+            comment: 'Embed App Extensions',
+          });
         }
 
-        // Add target dependency — main app depends on widget target
+        // 4. Add target dependency — main app depends on widget target
         xcodeProject.addTargetDependency(mainTargetUuid, [target.uuid]);
       }
     } catch (err) {
