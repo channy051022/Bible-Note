@@ -56,67 +56,84 @@ struct VerseTimelineProvider: TimelineProvider {
     }
 }
 
+// Accent color used for headers and citation
+private let accentBlue = Color(red: 0.38, green: 0.65, blue: 0.98)
+
 // SwiftUI Views for Small, Medium, and Large widgets
 struct VerseWidgetEntryView: View {
     var entry: VerseTimelineProvider.Entry
     @Environment(\.widgetFamily) var family
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Header Badge
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(accentBlue)
+                    Text("VERSE OF THE DAY")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(accentBlue)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(6)
+
+                Spacer()
+
+                Text(entry.version)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+
+            // Verse Body
+            Text("\"\(entry.text)\"")
+                .font(.system(size: family == .systemSmall ? 11 : 13, weight: .medium, design: .serif))
+                .italic()
+                .foregroundColor(.white.opacity(0.92))
+                .lineLimit(family == .systemSmall ? 3 : family == .systemMedium ? 3 : 7)
+                .lineSpacing(2)
+
+            Spacer(minLength: 0)
+
+            // Citation footer
+            HStack {
+                Spacer()
+                Text("— \(entry.citation)")
+                    .font(.system(size: family == .systemSmall ? 10 : 12, weight: .bold))
+                    .foregroundColor(accentBlue)
+            }
+        }
+        .padding(12)
+        .widgetURL(URL(string: "biblenotes://bible?bookId=\(entry.bookId)&chapter=\(entry.chapter)"))
+    }
+}
+
+// Glass background view — dark translucent gradient with material blur
+struct GlassWidgetBackground: View {
+    var body: some View {
         ZStack {
-            // Background gradient
+            // Base dark tint
             LinearGradient(
                 gradient: Gradient(colors: [
-                    Color(red: 0.08, green: 0.10, blue: 0.16),
-                    Color(red: 0.04, green: 0.05, blue: 0.09)
+                    Color(red: 0.08, green: 0.10, blue: 0.16).opacity(0.85),
+                    Color(red: 0.04, green: 0.05, blue: 0.09).opacity(0.92)
                 ]),
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-
-            VStack(alignment: .leading, spacing: 6) {
-                // Header Badge
-                HStack {
-                    HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color(red: 0.38, green: 0.65, blue: 0.98))
-                        Text("VERSE OF THE DAY")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(Color(red: 0.38, green: 0.65, blue: 0.98))
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(6)
-
-                    Spacer()
-
-                    Text(entry.version)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.white.opacity(0.6))
-                }
-
-                // Verse Body
-                Text("\"\(entry.text)\"")
-                    .font(.system(size: family == .systemSmall ? 11 : 13, weight: .medium, design: .serif))
-                    .italic()
-                    .foregroundColor(.white.opacity(0.92))
-                    .lineLimit(family == .systemSmall ? 3 : family == .systemMedium ? 3 : 7)
-                    .lineSpacing(2)
-
-                Spacer(minLength: 0)
-
-                // Citation footer
-                HStack {
-                    Spacer()
-                    Text("— \(entry.citation)")
-                        .font(.system(size: family == .systemSmall ? 10 : 12, weight: .bold))
-                        .foregroundColor(Color(red: 0.38, green: 0.65, blue: 0.98))
-                }
-            }
-            .padding(12)
+            // Subtle glass highlight at top
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color.white.opacity(0.06),
+                    Color.clear
+                ]),
+                startPoint: .top,
+                endPoint: .center
+            )
         }
-        .widgetURL(URL(string: "biblenotes://bible?bookId=\(entry.bookId)&chapter=\(entry.chapter)"))
     }
 }
 
@@ -127,7 +144,18 @@ struct VerseWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: VerseTimelineProvider()) { entry in
-            VerseWidgetEntryView(entry: entry)
+            if #available(iOS 17.0, *) {
+                VerseWidgetEntryView(entry: entry)
+                    .containerBackground(for: .widget) {
+                        GlassWidgetBackground()
+                    }
+            } else {
+                // Fallback for iOS 16 — use ZStack with background
+                ZStack {
+                    GlassWidgetBackground()
+                    VerseWidgetEntryView(entry: entry)
+                }
+            }
         }
         .configurationDisplayName("SHEPHERD Verse of the Day")
         .description("Daily uplifting Scripture on your Home Screen.")

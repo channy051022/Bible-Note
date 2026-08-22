@@ -19,6 +19,9 @@ const ALARMS_STORAGE_KEY = 'SHEPHERD_SPIRITUAL_ALARMS';
 let _rescheduleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const RESCHEDULE_DEBOUNCE_MS = 2000;
 
+// Cache flag: notification channels only need to be initialized once per app session
+let _channelsInitialized = false;
+
 export interface RingtoneChannelConfig {
   soundFile: string;
   channelId: string;
@@ -93,7 +96,8 @@ export const AlarmService = {
   },
 
   /**
-   * Saves a new or updated alarm and reschedules notifications
+   * Saves a new or updated alarm and reschedules notifications.
+   * Storage is updated synchronously for instant UI; notification scheduling runs in the background.
    */
   async saveAlarm(alarm: SpiritualAlarm): Promise<SpiritualAlarm[]> {
     const alarms = await this.getAlarms();
@@ -106,7 +110,10 @@ export const AlarmService = {
       updated = [alarm, ...alarms];
     }
     setItem(ALARMS_STORAGE_KEY, updated);
-    await this.syncAllAlarmSchedules(updated);
+    // Fire-and-forget: schedule notifications in the background so UI closes instantly
+    this.syncAllAlarmSchedules(updated).catch((e) =>
+      console.warn('Background alarm sync error:', e)
+    );
     return updated;
   },
 
@@ -117,7 +124,10 @@ export const AlarmService = {
     const alarms = await this.getAlarms();
     const updated = alarms.filter((a) => a.id !== id);
     setItem(ALARMS_STORAGE_KEY, updated);
-    await this.syncAllAlarmSchedules(updated);
+    // Fire-and-forget
+    this.syncAllAlarmSchedules(updated).catch((e) =>
+      console.warn('Background alarm sync error:', e)
+    );
     return updated;
   },
 
@@ -128,7 +138,10 @@ export const AlarmService = {
     const alarms = await this.getAlarms();
     const updated = alarms.map((a) => (a.id === id ? { ...a, isEnabled } : a));
     setItem(ALARMS_STORAGE_KEY, updated);
-    await this.syncAllAlarmSchedules(updated);
+    // Fire-and-forget
+    this.syncAllAlarmSchedules(updated).catch((e) =>
+      console.warn('Background alarm sync error:', e)
+    );
     return updated;
   },
 
@@ -244,6 +257,8 @@ export const AlarmService = {
    */
   async initNotificationChannels() {
     if (Platform.OS === 'web') return;
+    // Skip if already initialized this session — channels persist across app launches
+    if (_channelsInitialized) return;
 
     try {
       // 1. Android Alarm Notification Channels
@@ -253,19 +268,15 @@ export const AlarmService = {
         // Clean up any old channels from previous versions
         try {
           const existingChannels = await Notifications.getNotificationChannelsAsync();
-          for (const ch of existingChannels) {
-            if (
-              ch.id.startsWith('spiritual_alarm_') &&
-              !ch.id.endsWith('_v5')
-            ) {
-              await Notifications.deleteNotificationChannelAsync(ch.id).catch(() => {});
-            }
-          }
+          const deletePromises = existingChannels
+            .filter((ch) => ch.id.startsWith('spiritual_alarm_') && !ch.id.endsWith('_v5'))
+            .map((ch) => Notifications.deleteNotificationChannelAsync(ch.id).catch(() => {}));
+          await Promise.all(deletePromises);
         } catch {}
 
         // Register each ringtone's dedicated channel with ALARM audio attributes and maximum importance
-        for (const [, conf] of Object.entries(RINGTONE_SOUND_MAP)) {
-          await Notifications.setNotificationChannelAsync(conf.channelId, {
+        const channelPromises = Object.values(RINGTONE_SOUND_MAP).map((conf) =>
+          Notifications.setNotificationChannelAsync(conf.channelId, {
             name: conf.channelName,
             description: "Spiritual wake-up alarm with God's Word and chime melodies",
             importance: Notifications.AndroidImportance.MAX,
@@ -285,18 +296,20 @@ export const AlarmService = {
             lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
             bypassDnd: true,
             showBadge: true,
-          });
-        }
-
-        // Daily verse background channel
-        await Notifications.setNotificationChannelAsync('daily_verse_channel_v5', {
-          name: 'Daily Verse of the Day',
-          description: 'Daily scripture inspiration notification',
-          importance: Notifications.AndroidImportance.DEFAULT,
-          sound: 'default',
-          enableLights: false,
-          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        });
+          })
+        );
+        channelPromises.push(
+          // Daily verse background channel
+          Notifications.setNotificationChannelAsync('daily_verse_channel_v5', {
+            name: 'Daily Verse of the Day',
+            description: 'Daily scripture inspiration notification',
+            importance: Notifications.AndroidImportance.DEFAULT,
+            sound: 'default',
+            enableLights: false,
+            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          })
+        );
+        await Promise.all(channelPromises);
       }
 
       // 2. Notification Category for interactive lock screen actions
@@ -317,6 +330,8 @@ export const AlarmService = {
           },
         },
       ]);
+
+      _channelsInitialized = true;
     } catch (e) {
       console.warn('Error setting up notification channels & categories:', e);
     }
@@ -472,19 +487,17 @@ export const AlarmService = {
       await this.initNotificationChannels();
 
       // 3. SURGICAL cancellation: only cancel alarm-wave, alarm-recurring, and daily-verse identifiers
-      //    This prevents the race condition where cancelAllScheduledNotificationsAsync() wipes everything
-      //    and the app gets killed before new alarms are registered.
+      //    Uses batched Promise.all for speed instead of serial awaits.
       try {
         const existingScheduled = await Notifications.getAllScheduledNotificationsAsync();
-        for (const n of existingScheduled) {
-          if (
+        const cancelPromises = existingScheduled
+          .filter((n) =>
             n.identifier.startsWith('alarm-wave-') ||
             n.identifier.startsWith('alarm-recurring-') ||
             n.identifier === 'daily-verse-of-day-notification'
-          ) {
-            await Notifications.cancelScheduledNotificationAsync(n.identifier);
-          }
-        }
+          )
+          .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier));
+        await Promise.all(cancelPromises);
       } catch (cancelErr) {
         console.warn('Error during surgical alarm cancellation, falling back:', cancelErr);
         // Only as absolute last resort — this is the dangerous path
@@ -544,7 +557,9 @@ export const AlarmService = {
         const waveCount = Math.min(5, Math.max(3, Math.ceil(180 / waveInterval)));
 
         // A. Multi-Day Advance Scheduled Dates (Guarantees next 14 days of exact alarms trigger even when app is closed)
+        //    Batched with Promise.all for speed instead of serial awaits
         const upcomingDates = this.getAllUpcomingOccurrences(alarm, 14);
+        const wavePromises: Promise<any>[] = [];
         for (const occurrenceDate of upcomingDates) {
           const dateKey = `${occurrenceDate.getFullYear()}${(occurrenceDate.getMonth() + 1).toString().padStart(2, '0')}${occurrenceDate.getDate().toString().padStart(2, '0')}`;
 
@@ -553,42 +568,45 @@ export const AlarmService = {
               occurrenceDate.getTime() + wave * waveInterval * 1000
             );
 
-            await Notifications.scheduleNotificationAsync({
-              identifier: `alarm-wave-${alarm.id}-${dateKey}-w${wave}`,
-              content: {
-                title: `🔔 ${timeFormatted} • ${alarm.label}`,
-                body: `✝️ ${citation}\n"${verseBody}"`,
-                sound: soundFileName,
-                priority: Notifications.AndroidNotificationPriority.MAX,
-                vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
-                categoryIdentifier: 'spiritual_alarm',
-                color: '#E5A93C',
-                autoDismiss: false,
-                sticky: false,
-                data: {
-                  alarmId: alarm.id,
-                  timeString: timeFormatted,
-                  citation,
-                  text: verseBody,
-                  bookId: alarm.bookId || ref.bookId,
-                  chapter: alarm.chapter || ref.chapter,
-                  ringtoneId: ringtoneKey,
-                  customAudioUri: alarm.customAudioUri,
-                  customAudioDuration: alarm.customAudioDuration,
-                  customAudioStartOffset: alarm.customAudioStartOffset || 0,
-                  isSpiritualAlarm: true,
-                  waveIndex: wave,
+            wavePromises.push(
+              Notifications.scheduleNotificationAsync({
+                identifier: `alarm-wave-${alarm.id}-${dateKey}-w${wave}`,
+                content: {
+                  title: `🔔 ${timeFormatted} • ${alarm.label}`,
+                  body: `✝️ ${citation}\n"${verseBody}"`,
+                  sound: soundFileName,
+                  priority: Notifications.AndroidNotificationPriority.MAX,
+                  vibrate: [0, 800, 400, 800, 400, 800, 400, 800],
+                  categoryIdentifier: 'spiritual_alarm',
+                  color: '#E5A93C',
+                  autoDismiss: false,
+                  sticky: false,
+                  data: {
+                    alarmId: alarm.id,
+                    timeString: timeFormatted,
+                    citation,
+                    text: verseBody,
+                    bookId: alarm.bookId || ref.bookId,
+                    chapter: alarm.chapter || ref.chapter,
+                    ringtoneId: ringtoneKey,
+                    customAudioUri: alarm.customAudioUri,
+                    customAudioDuration: alarm.customAudioDuration,
+                    customAudioStartOffset: alarm.customAudioStartOffset || 0,
+                    isSpiritualAlarm: true,
+                    waveIndex: wave,
+                  },
+                  interruptionLevel: 'timeSensitive',
                 },
-                interruptionLevel: 'timeSensitive',
-              },
-              trigger: {
-                type: Notifications.SchedulableTriggerInputTypes.DATE,
-                date: waveTimestamp,
-                channelId,
-              } as any,
-            });
+                trigger: {
+                  type: Notifications.SchedulableTriggerInputTypes.DATE,
+                  date: waveTimestamp,
+                  channelId,
+                } as any,
+              })
+            );
           }
         }
+        await Promise.all(wavePromises);
 
         // B. Native Recurring Triggers (Permanent recurring schedules maintained by OS indefinitely)
         const days = alarm.days && alarm.days.length > 0 ? alarm.days : [0, 1, 2, 3, 4, 5, 6];
