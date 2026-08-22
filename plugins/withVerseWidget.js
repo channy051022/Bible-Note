@@ -89,15 +89,41 @@ const withVerseWidget = (config) => {
       if (mainTarget && mainTarget.firstTarget) {
         const mainTargetUuid = mainTarget.firstTarget.uuid;
 
-        // Add the widget product (.appex) as a file reference for embedding
-        // dstSubfolderSpec 13 = PlugIns folder
-        xcodeProject.addBuildPhase(
-          [`${WIDGET_TARGET_NAME}.appex`],
+        // Create an EMPTY copy files phase first (passing files to addBuildPhase
+        // would create orphaned PBXFileReference entries that break CocoaPods)
+        const embedPhase = xcodeProject.addBuildPhase(
+          [],
           'PBXCopyFilesBuildPhase',
           'Embed App Extensions',
           mainTargetUuid,
           'app_extension'
         );
+
+        // Wire the widget's product (.appex) into the embed phase using the
+        // EXISTING product reference that addTarget already placed in the Products group
+        if (embedPhase) {
+          const widgetProductRef = target.pbxNativeTarget.productReference;
+          const buildFileUuid = xcodeProject.generateUuid();
+
+          // Register a PBXBuildFile pointing to the existing product reference
+          xcodeProject.hash.project.objects['PBXBuildFile'][buildFileUuid] = {
+            isa: 'PBXBuildFile',
+            fileRef: widgetProductRef,
+            fileRef_comment: `${WIDGET_TARGET_NAME}.appex`,
+            settings: { ATTRIBUTES: ['RemoveHeadersOnCopy'] },
+          };
+          xcodeProject.hash.project.objects['PBXBuildFile'][`${buildFileUuid}_comment`] =
+            `${WIDGET_TARGET_NAME}.appex in Embed App Extensions`;
+
+          // Add the build file to the embed phase's files list
+          const copySection = xcodeProject.hash.project.objects['PBXCopyFilesBuildPhase'];
+          if (copySection && copySection[embedPhase.uuid]) {
+            copySection[embedPhase.uuid].files.push({
+              value: buildFileUuid,
+              comment: `${WIDGET_TARGET_NAME}.appex in Embed App Extensions`,
+            });
+          }
+        }
 
         // Add target dependency — main app depends on widget target
         xcodeProject.addTargetDependency(mainTargetUuid, [target.uuid]);
