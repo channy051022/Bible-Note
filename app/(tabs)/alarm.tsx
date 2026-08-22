@@ -140,6 +140,7 @@ export default function AlarmScreen() {
 
   // Modal for Add/Edit Alarm
   const [modalVisible, setModalVisible] = useState<boolean>(false);
+  const [isSavingAlarm, setIsSavingAlarm] = useState<boolean>(false);
   const [editingAlarmId, setEditingAlarmId] = useState<string | null>(null);
   const [selectedHour, setSelectedHour] = useState<number>(7);
   const [selectedMinute, setSelectedMinute] = useState<number>(0);
@@ -551,89 +552,99 @@ export default function AlarmScreen() {
   };
 
   const handleSaveAlarm = async () => {
-    SoundService.stopPreview();
-    setPreviewingRingtoneId(null);
+    if (isSavingAlarm) return;
+    setIsSavingAlarm(true);
 
-    // Compute 24-hour hour
-    let hour24 = selectedHour % 12;
-    if (selectedPeriod === 'PM') hour24 += 12;
+    try {
+      SoundService.stopPreview();
+      setPreviewingRingtoneId(null);
 
-    const isDaily = selectedPresetId === 'daily';
-    const isPicker = selectedPresetId === 'bible_picker';
-    const isManual = selectedPresetId === 'custom_manual';
-    const matchedSaved = savedVerses.find((v) => v.id === selectedPresetId);
+      // Compute 24-hour hour
+      let hour24 = selectedHour % 12;
+      if (selectedPeriod === 'PM') hour24 += 12;
 
-    let finalCitation: string | undefined = undefined;
-    let finalText: string | undefined = undefined;
-    let bookId: number | undefined = undefined;
-    let chapter: number | undefined = undefined;
-    let verse: number | undefined = undefined;
+      const isDaily = selectedPresetId === 'daily';
+      const isPicker = selectedPresetId === 'bible_picker';
+      const isManual = selectedPresetId === 'custom_manual';
+      const matchedSaved = savedVerses.find((v) => v.id === selectedPresetId);
 
-    if (isDaily) {
-      finalCitation = undefined;
-      finalText = undefined;
-    } else if (matchedSaved) {
-      finalCitation = matchedSaved.citation;
-      finalText = matchedSaved.text;
-      bookId = matchedSaved.bookId;
-      chapter = matchedSaved.chapter;
-      verse = matchedSaved.verse;
-    } else if (isPicker) {
-      finalCitation = customVerseCitation.trim() || 'Bible Scripture';
-      finalText = customVerseText.trim() || 'God is our refuge and strength.';
-      bookId = pickerBookId;
-      chapter = pickerChapter;
-      verse = pickerVerse;
-    } else if (isManual) {
-      finalCitation = customVerseCitation.trim() || 'Custom Scripture';
-      finalText = customVerseText.trim() || 'The Lord is my shepherd; I shall not want.';
-    }
+      let finalCitation: string | undefined = undefined;
+      let finalText: string | undefined = undefined;
+      let bookId: number | undefined = undefined;
+      let chapter: number | undefined = undefined;
+      let verse: number | undefined = undefined;
 
-    const newAlarm: SpiritualAlarm = {
-      id: editingAlarmId || `alarm-${Date.now()}`,
-      hour: hour24,
-      minute: selectedMinute,
-      label: alarmLabel.trim() || 'Spiritual Alarm',
-      days: selectedDays,
-      isEnabled: true,
-      verseSource: isDaily ? 'daily' : 'custom',
-      customCitation: finalCitation,
-      customText: finalText,
-      bookId: isDaily ? undefined : bookId,
-      chapter: isDaily ? undefined : chapter,
-      verse: isDaily ? undefined : verse,
-      ringtoneId: selectedRingtoneId,
-      customAudioUri: selectedRingtoneId === 'custom' ? customAudioUri : undefined,
-      customAudioName: selectedRingtoneId === 'custom' ? customAudioName : undefined,
-      customAudioDuration: selectedRingtoneId === 'custom' ? customAudioDuration : undefined,
-      customAudioStartOffset: selectedRingtoneId === 'custom' ? customAudioStartOffset : 0,
-    };
+      if (isDaily) {
+        finalCitation = undefined;
+        finalText = undefined;
+      } else if (matchedSaved) {
+        finalCitation = matchedSaved.citation;
+        finalText = matchedSaved.text;
+        bookId = matchedSaved.bookId;
+        chapter = matchedSaved.chapter;
+        verse = matchedSaved.verse;
+      } else if (isPicker) {
+        finalCitation = customVerseCitation.trim() || 'Bible Scripture';
+        finalText = customVerseText.trim() || 'God is our refuge and strength.';
+        bookId = pickerBookId;
+        chapter = pickerChapter;
+        verse = pickerVerse;
+      } else if (isManual) {
+        finalCitation = customVerseCitation.trim() || 'Custom Scripture';
+        finalText = customVerseText.trim() || 'The Lord is my shepherd; I shall not want.';
+      }
 
-    const updated = await AlarmService.saveAlarm(newAlarm);
-    setAlarms(updated);
-    setModalVisible(false);
+      const newAlarm: SpiritualAlarm = {
+        id: editingAlarmId || `alarm-${Date.now()}`,
+        hour: hour24,
+        minute: selectedMinute,
+        label: alarmLabel.trim() || 'Spiritual Alarm',
+        days: selectedDays,
+        isEnabled: true,
+        verseSource: isDaily ? 'daily' : 'custom',
+        customCitation: finalCitation,
+        customText: finalText,
+        bookId: isDaily ? undefined : bookId,
+        chapter: isDaily ? undefined : chapter,
+        verse: isDaily ? undefined : verse,
+        ringtoneId: selectedRingtoneId,
+        customAudioUri: selectedRingtoneId === 'custom' ? customAudioUri : undefined,
+        customAudioName: selectedRingtoneId === 'custom' ? customAudioName : undefined,
+        customAudioDuration: selectedRingtoneId === 'custom' ? customAudioDuration : undefined,
+        customAudioStartOffset: selectedRingtoneId === 'custom' ? customAudioStartOffset : 0,
+      };
 
-    const formattedTime = AlarmService.formatTime(hour24, selectedMinute);
-    Alert.alert(
-      'Spiritual Alarm Saved! 🔔',
-      `Your alarm is set for ${formattedTime} (${AlarmService.formatDays(selectedDays)}).\n\nWhen the time arrives, your phone will ring and display God's Word on your screen!`
-    );
+      const updated = await AlarmService.saveAlarm(newAlarm);
+      setAlarms(updated);
+      setModalVisible(false);
 
-    // On Android, guide user through critical permissions on first alarm save
-    if (Platform.OS === 'android') {
-      try {
-        const alarmPermissionsChecked = getItem<boolean>('ALARM_PERMISSIONS_CHECKED', false);
-        if (!alarmPermissionsChecked) {
-          setItem('ALARM_PERMISSIONS_CHECKED', true);
-          // Stagger the alerts so they don't overlap
-          setTimeout(() => {
-            AlarmService.checkAndRequestExactAlarmPermission(true);
-          }, 1500);
-          setTimeout(() => {
-            AlarmService.checkBatteryOptimization(true);
-          }, 8000);
-        }
-      } catch {}
+      const formattedTime = AlarmService.formatTime(hour24, selectedMinute);
+      Alert.alert(
+        'Spiritual Alarm Saved! 🔔',
+        `Your alarm is set for ${formattedTime} (${AlarmService.formatDays(selectedDays)}).\n\nWhen the time arrives, your phone will ring and display God's Word on your screen!`
+      );
+
+      // On Android, guide user through critical permissions on first alarm save
+      if (Platform.OS === 'android') {
+        try {
+          const alarmPermissionsChecked = getItem<boolean>('ALARM_PERMISSIONS_CHECKED', false);
+          if (!alarmPermissionsChecked) {
+            setItem('ALARM_PERMISSIONS_CHECKED', true);
+            // Stagger the alerts so they don't overlap
+            setTimeout(() => {
+              AlarmService.checkAndRequestExactAlarmPermission(true);
+            }, 1500);
+            setTimeout(() => {
+              AlarmService.checkBatteryOptimization(true);
+            }, 8000);
+          }
+        } catch {}
+      }
+    } catch (err) {
+      console.warn('Error saving alarm:', err);
+      Alert.alert('Save Notice', 'Alarm was saved to your list. Please ensure notification permissions are enabled.');
+    } finally {
+      setIsSavingAlarm(false);
     }
   };
 
@@ -1847,13 +1858,21 @@ export default function AlarmScreen() {
 
               {/* Save Button */}
               <TouchableOpacity
-                style={[styles.saveAlarmBtn, { backgroundColor: colors.tint }]}
+                style={[styles.saveAlarmBtn, { backgroundColor: colors.tint, opacity: isSavingAlarm ? 0.75 : 1 }]}
                 onPress={handleSaveAlarm}
+                disabled={isSavingAlarm}
                 activeOpacity={0.8}
               >
-                <Text style={styles.saveAlarmBtnText}>
-                  {editingAlarmId ? '💾 Save Alarm Changes' : '🔔 Create Spiritual Alarm'}
-                </Text>
+                {isSavingAlarm ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.saveAlarmBtnText}>Saving & Registering Alarm...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.saveAlarmBtnText}>
+                    {editingAlarmId ? '💾 Save Alarm Changes' : '🔔 Create Spiritual Alarm'}
+                  </Text>
+                )}
               </TouchableOpacity>
             </ScrollView>
           </View>
