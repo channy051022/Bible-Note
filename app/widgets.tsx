@@ -30,7 +30,7 @@ export default function VerseWidgetsScreen() {
   const { colors, isDark } = useTheme();
 
   const [widgetSize, setWidgetSize] = useState<WidgetSize>('medium');
-  const [widgetTheme, setWidgetTheme] = useState<WidgetTheme>('glass');
+  const [widgetTheme, setWidgetTheme] = useState<WidgetTheme>(() => getItem<WidgetTheme>('WIDGET_THEME', 'glass'));
   const [widgetSource, setWidgetSource] = useState<WidgetSource>('daily');
   const [copiedToast, setCopiedToast] = useState<boolean>(false);
   const [syncedToast, setSyncedToast] = useState<boolean>(false);
@@ -61,7 +61,8 @@ export default function VerseWidgetsScreen() {
           });
 
           // Sync to native iOS WidgetKit & Android AppWidget storage
-          WidgetBridgeService.syncVerseToNativeWidget(citation, found.text, v, ref.bookId, ref.chapter);
+          const currentTheme = getItem<WidgetTheme>('WIDGET_THEME', 'glass');
+          WidgetBridgeService.syncVerseToNativeWidget(citation, found.text, v, ref.bookId, ref.chapter, currentTheme);
         }
 
         // 2. Fetch Bookmarks
@@ -318,7 +319,20 @@ export default function VerseWidgetsScreen() {
                     borderColor: isSelected ? item.color : colors.border,
                   },
                 ]}
-                onPress={() => setWidgetTheme(item.id as WidgetTheme)}
+                onPress={() => {
+                  const newTheme = item.id as WidgetTheme;
+                  setWidgetTheme(newTheme);
+                  if (activeVerseData) {
+                    WidgetBridgeService.syncVerseToNativeWidget(
+                      activeVerseData.citation,
+                      activeVerseData.verse.text,
+                      version,
+                      activeVerseData.book.id,
+                      activeVerseData.verse.chapter,
+                      newTheme
+                    );
+                  }
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.pillBtnText, { color: isSelected ? item.color : colors.text, fontWeight: isSelected ? '700' : '500' }]}>
@@ -405,7 +419,8 @@ export default function VerseWidgetsScreen() {
                   activeVerseData.verse.text,
                   version,
                   activeVerseData.book.id,
-                  activeVerseData.verse.chapter
+                  activeVerseData.verse.chapter,
+                  widgetTheme
                 );
                 setSyncedToast(true);
                 setTimeout(() => setSyncedToast(false), 2500);

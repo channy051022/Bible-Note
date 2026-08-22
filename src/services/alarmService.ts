@@ -110,7 +110,7 @@ export const AlarmService = {
 
   /**
    * Saves a new or updated alarm and reschedules notifications.
-   * Storage is updated synchronously for instant UI; notification scheduling runs in the background.
+   * Awaits schedule synchronization so OS local notifications are guaranteed registered before app closes.
    */
   async saveAlarm(alarm: SpiritualAlarm): Promise<SpiritualAlarm[]> {
     const alarms = await this.getAlarms();
@@ -123,10 +123,7 @@ export const AlarmService = {
       updated = [alarm, ...alarms];
     }
     setItem(ALARMS_STORAGE_KEY, updated);
-    // Fire-and-forget: schedule notifications in the background so UI closes instantly
-    this.syncAllAlarmSchedules(updated).catch((e) =>
-      console.warn('Background alarm sync error:', e)
-    );
+    await this.syncAllAlarmSchedules(updated);
     return updated;
   },
 
@@ -137,10 +134,7 @@ export const AlarmService = {
     const alarms = await this.getAlarms();
     const updated = alarms.filter((a) => a.id !== id);
     setItem(ALARMS_STORAGE_KEY, updated);
-    // Fire-and-forget
-    this.syncAllAlarmSchedules(updated).catch((e) =>
-      console.warn('Background alarm sync error:', e)
-    );
+    await this.syncAllAlarmSchedules(updated);
     return updated;
   },
 
@@ -151,10 +145,7 @@ export const AlarmService = {
     const alarms = await this.getAlarms();
     const updated = alarms.map((a) => (a.id === id ? { ...a, isEnabled } : a));
     setItem(ALARMS_STORAGE_KEY, updated);
-    // Fire-and-forget
-    this.syncAllAlarmSchedules(updated).catch((e) =>
-      console.warn('Background alarm sync error:', e)
-    );
+    await this.syncAllAlarmSchedules(updated);
     return updated;
   },
 
@@ -597,12 +588,11 @@ export const AlarmService = {
             ? Math.ceil(rawDuration - startOffset)
             : ringtoneConf.durationSeconds || 28;
         const waveInterval = Math.max(15, effectiveDuration);
-        // Schedule up to 10 waves covering ~10 minutes of ringing (enough to wake anyone up)
-        const waveCount = Math.min(10, Math.max(5, Math.ceil(600 / waveInterval)));
+        // 5 consecutive waves per occurrence (~2.5 minutes of ringing per alarm)
+        const waveCount = 5;
 
-        // A. Multi-Day Advance Scheduled Dates (Guarantees next 14 days of exact alarms trigger even when app is closed)
-        //    Batched with Promise.all for speed instead of serial awaits
-        const upcomingDates = this.getAllUpcomingOccurrences(alarm, 14);
+        // A. Advance Scheduled Dates (Schedules next 3 active days, well within iOS 64-notification limit)
+        const upcomingDates = this.getAllUpcomingOccurrences(alarm, 3);
         const wavePromises: Promise<any>[] = [];
         for (const occurrenceDate of upcomingDates) {
           const dateKey = `${occurrenceDate.getFullYear()}${(occurrenceDate.getMonth() + 1).toString().padStart(2, '0')}${occurrenceDate.getDate().toString().padStart(2, '0')}`;
@@ -641,11 +631,15 @@ export const AlarmService = {
                   },
                   interruptionLevel: 'timeSensitive',
                 },
-                trigger: {
-                  type: Notifications.SchedulableTriggerInputTypes.DATE,
-                  date: waveTimestamp,
-                  channelId,
-                } as any,
+                trigger: Platform.OS === 'ios'
+                  ? ({
+                      date: waveTimestamp,
+                    } as any)
+                  : ({
+                      type: Notifications.SchedulableTriggerInputTypes.DATE,
+                      date: waveTimestamp,
+                      channelId,
+                    } as any),
               })
             );
           }
@@ -787,9 +781,7 @@ export const AlarmService = {
           ? Math.ceil(rawDuration - startOffset)
           : ringtoneConf.durationSeconds || 28;
       const waveInterval = Math.max(15, effectiveDuration);
-      const waveCount = Math.min(10, Math.max(5, Math.ceil(600 / waveInterval)));
-
-      // Schedule sequential waves spaced precisely according to song duration
+      const waveCount = 5;
       for (let wave = 0; wave < waveCount; wave++) {
         const triggerDelay = Math.max(1, seconds + wave * waveInterval);
         await Notifications.scheduleNotificationAsync({
@@ -820,12 +812,17 @@ export const AlarmService = {
             },
             interruptionLevel: 'timeSensitive',
           },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-            seconds: triggerDelay,
-            repeats: false,
-            channelId,
-          } as any,
+          trigger: Platform.OS === 'ios'
+            ? ({
+                seconds: triggerDelay,
+                repeats: false,
+              } as any)
+            : ({
+                type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                seconds: triggerDelay,
+                repeats: false,
+                channelId,
+              } as any),
         });
       }
     } catch (e) {
@@ -881,8 +878,7 @@ export const AlarmService = {
           ? Math.ceil(rawDuration - startOffset)
           : ringtoneConf.durationSeconds || 28;
       const waveInterval = Math.max(15, effectiveDuration);
-      const waveCount = Math.min(10, Math.max(5, Math.ceil(600 / waveInterval)));
-
+      const waveCount = 5;
       for (let wave = 0; wave < waveCount; wave++) {
         const triggerDelay = delaySeconds + wave * waveInterval;
         await Notifications.scheduleNotificationAsync({
@@ -913,12 +909,17 @@ export const AlarmService = {
             },
             interruptionLevel: 'timeSensitive',
           },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-            seconds: triggerDelay,
-            repeats: false,
-            channelId,
-          } as any,
+          trigger: Platform.OS === 'ios'
+            ? ({
+                seconds: triggerDelay,
+                repeats: false,
+              } as any)
+            : ({
+                type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                seconds: triggerDelay,
+                repeats: false,
+                channelId,
+              } as any),
         });
       }
     } catch (e) {

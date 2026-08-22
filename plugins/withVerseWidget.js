@@ -137,6 +137,14 @@ const withVerseWidget = (config) => {
 
         // 4. Add target dependency — main app depends on widget target
         xcodeProject.addTargetDependency(mainTargetUuid, [target.uuid]);
+
+        // 5. Add WidgetBridge native module files to the main target
+        try {
+          xcodeProject.addSourceFile('SHEPHERD/WidgetBridge.swift', null, mainTargetUuid);
+          xcodeProject.addSourceFile('SHEPHERD/WidgetBridge.m', null, mainTargetUuid);
+        } catch (srcErr) {
+          console.warn('Could not add WidgetBridge source files to main target:', srcErr);
+        }
       }
     } catch (err) {
       console.warn('withVerseWidget: Error while configuring Xcode widget target:', err);
@@ -280,6 +288,18 @@ const withVerseWidget = (config) => {
         path.join(iosWidgetDir, `${WIDGET_TARGET_NAME}.entitlements`),
         entitlementsContent
       );
+
+      // Copy WidgetBridge native module files into main app folder
+      const mainAppDir = path.join(platformRoot, 'SHEPHERD');
+      fs.mkdirSync(mainAppDir, { recursive: true });
+      const bridgeSwift = path.join(widgetSrcDir, 'WidgetBridge.swift');
+      if (fs.existsSync(bridgeSwift)) {
+        fs.copyFileSync(bridgeSwift, path.join(mainAppDir, 'WidgetBridge.swift'));
+      }
+      const bridgeObjc = path.join(widgetSrcDir, 'WidgetBridge.m');
+      if (fs.existsSync(bridgeObjc)) {
+        fs.copyFileSync(bridgeObjc, path.join(mainAppDir, 'WidgetBridge.m'));
+      }
 
       return config;
     },
