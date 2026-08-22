@@ -107,24 +107,12 @@ export const SoundService = {
           source,
           {
             shouldPlay: true,
-            isLooping: false,
+            isLooping: true,
             positionMillis: startPosMillis,
             volume: 1.0,
-          },
-          (status: AVPlaybackStatus) => {
-            if (status.isLoaded && status.didJustFinish) {
-              // Rewind to the user's chosen cut/start point and replay in a continuous loop
-              sound
-                .setPositionAsync(startPosMillis)
-                .then(() => {
-                  sound.playAsync().catch(() => {});
-                })
-                .catch(() => {});
-            }
           }
         );
         alarmSoundObject = sound;
-        await sound.playAsync();
       } catch (assetErr) {
         console.warn('Initial alarm sound source failed, falling back to classic bell:', assetErr);
         // Fallback to built-in classic bell
@@ -134,16 +122,9 @@ export const SoundService = {
             shouldPlay: true,
             isLooping: true,
             volume: 1.0,
-          },
-          (status: AVPlaybackStatus) => {
-            if (status.isLoaded && status.didJustFinish) {
-              sound.replayAsync().catch(() => {});
-            }
           }
         );
         alarmSoundObject = sound;
-        await sound.setIsLoopingAsync(true);
-        await sound.playAsync();
       }
     } catch (e) {
       console.warn('Error playing alarm ringtone:', e);

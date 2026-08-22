@@ -31,7 +31,6 @@ struct VerseTimelineProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<VerseWidgetEntry>) -> ()) {
         let entry = loadVerseFromSharedStorage()
-        // Refresh daily at midnight
         let nextUpdate = Calendar.current.date(byAdding: .hour, value: 4, to: Date()) ?? Date().addingTimeInterval(14400)
         let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
         completion(timeline)
@@ -59,7 +58,7 @@ struct VerseTimelineProvider: TimelineProvider {
 // Accent color used for headers and citation
 private let accentBlue = Color(red: 0.38, green: 0.65, blue: 0.98)
 
-// SwiftUI Views for Small, Medium, and Large widgets
+// SwiftUI content view for the widget
 struct VerseWidgetEntryView: View {
     var entry: VerseTimelineProvider.Entry
     @Environment(\.widgetFamily) var family
@@ -78,7 +77,7 @@ struct VerseWidgetEntryView: View {
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
-                .background(Color.white.opacity(0.08))
+                .background(Color.white.opacity(0.1))
                 .cornerRadius(6)
 
                 Spacer()
@@ -111,32 +110,6 @@ struct VerseWidgetEntryView: View {
     }
 }
 
-// Glass background view — dark translucent gradient with material blur
-struct GlassWidgetBackground: View {
-    var body: some View {
-        ZStack {
-            // Base dark tint
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(red: 0.08, green: 0.10, blue: 0.16).opacity(0.85),
-                    Color(red: 0.04, green: 0.05, blue: 0.09).opacity(0.92)
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            // Subtle glass highlight at top
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color.white.opacity(0.06),
-                    Color.clear
-                ]),
-                startPoint: .top,
-                endPoint: .center
-            )
-        }
-    }
-}
-
 // Widget Configuration Entry point
 @main
 struct VerseWidget: Widget {
@@ -144,18 +117,29 @@ struct VerseWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: VerseTimelineProvider()) { entry in
-            if #available(iOS 17.0, *) {
-                VerseWidgetEntryView(entry: entry)
-                    .containerBackground(for: .widget) {
-                        GlassWidgetBackground()
+            VerseWidgetEntryView(entry: entry)
+                .containerBackground(for: .widget) {
+                    // Dark glass-style gradient background (fully opaque)
+                    ZStack {
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(red: 0.10, green: 0.12, blue: 0.18),
+                                Color(red: 0.05, green: 0.06, blue: 0.10)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        // Subtle glass highlight shimmer at top edge
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color.white.opacity(0.08),
+                                Color.clear
+                            ]),
+                            startPoint: .top,
+                            endPoint: .center
+                        )
                     }
-            } else {
-                // Fallback for iOS 16 — use ZStack with background
-                ZStack {
-                    GlassWidgetBackground()
-                    VerseWidgetEntryView(entry: entry)
                 }
-            }
         }
         .configurationDisplayName("SHEPHERD Verse of the Day")
         .description("Daily uplifting Scripture on your Home Screen.")
