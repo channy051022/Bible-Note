@@ -30,7 +30,8 @@
         "UIBackgroundModes": [
           "audio",
           "fetch",
-          "remote-notification"
+          "remote-notification",
+          "processing"
         ]
       }
     },

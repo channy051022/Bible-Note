@@ -191,6 +191,42 @@ const withVerseWidget = (config) => {
       });
     }
 
+    // Add AlarmBootReceiver to re-register alarms after device reboot
+    const hasBootReceiver = mainApplication.receiver.some(
+      (r) => r.$['android:name'] === '.AlarmBootReceiver'
+    );
+
+    if (!hasBootReceiver) {
+      mainApplication.receiver.push({
+        $: {
+          'android:name': '.AlarmBootReceiver',
+          'android:exported': 'true',
+          'android:directBootAware': 'false',
+        },
+        'intent-filter': [
+          {
+            action: [
+              {
+                $: {
+                  'android:name': 'android.intent.action.BOOT_COMPLETED',
+                },
+              },
+              {
+                $: {
+                  'android:name': 'android.intent.action.QUICKBOOT_POWERON',
+                },
+              },
+              {
+                $: {
+                  'android:name': 'com.htc.intent.action.QUICKBOOT_POWERON',
+                },
+              },
+            ],
+          },
+        ],
+      });
+    }
+
     return config;
   });
 
@@ -218,6 +254,12 @@ const withVerseWidget = (config) => {
       const ktSrc = path.join(widgetSrcDir, 'VerseWidgetProvider.kt');
       if (fs.existsSync(ktSrc)) {
         fs.copyFileSync(ktSrc, path.join(javaDir, 'VerseWidgetProvider.kt'));
+      }
+
+      // Copy AlarmBootReceiver for reboot alarm re-registration
+      const bootReceiverSrc = path.join(widgetSrcDir, 'AlarmBootReceiver.kt');
+      if (fs.existsSync(bootReceiverSrc)) {
+        fs.copyFileSync(bootReceiverSrc, path.join(javaDir, 'AlarmBootReceiver.kt'));
       }
 
       const layoutSrc = path.join(widgetSrcDir, 'verse_widget_layout.xml');

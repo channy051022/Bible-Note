@@ -591,8 +591,15 @@ export const AlarmService = {
         // 5 consecutive waves per occurrence (~2.5 minutes of ringing per alarm)
         const waveCount = 5;
 
-        // A. Advance Scheduled Dates (Schedules next 3 active days, well within iOS 64-notification limit)
-        const upcomingDates = this.getAllUpcomingOccurrences(alarm, 3);
+        // A. Advance Scheduled Dates
+        //    Schedule up to 14 days of wave notifications in advance.
+        //    iOS limits apps to 64 scheduled notifications total, so we intelligently cap
+        //    the number of occurrences per alarm to stay within budget.
+        const maxTotalNotifications = 60; // leave headroom below iOS 64 limit
+        const activeAlarmCount = alarms.filter((a) => a.isEnabled).length || 1;
+        const maxOccurrencesPerAlarm = Math.max(2, Math.floor(maxTotalNotifications / (activeAlarmCount * waveCount)));
+        const allUpcoming = this.getAllUpcomingOccurrences(alarm, 14);
+        const upcomingDates = allUpcoming.slice(0, maxOccurrencesPerAlarm);
         const wavePromises: Promise<any>[] = [];
         for (const occurrenceDate of upcomingDates) {
           const dateKey = `${occurrenceDate.getFullYear()}${(occurrenceDate.getMonth() + 1).toString().padStart(2, '0')}${occurrenceDate.getDate().toString().padStart(2, '0')}`;
@@ -633,6 +640,7 @@ export const AlarmService = {
                 },
                 trigger: Platform.OS === 'ios'
                   ? ({
+                      type: Notifications.SchedulableTriggerInputTypes.DATE,
                       date: waveTimestamp,
                     } as any)
                   : ({
