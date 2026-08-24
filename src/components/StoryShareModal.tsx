@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -12,12 +12,16 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  PanResponder,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image as ExpoImage } from 'expo-image';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
-import ViewShot, { captureRef } from 'react-native-view-shot';
+import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
+import { captureRef } from 'react-native-view-shot';
 import { useTheme } from '../hooks/useTheme';
 import { BibleVersion } from '../types/bible';
 
@@ -41,6 +45,12 @@ interface StoryTheme {
   accentColor: string;
   cardBg: string;
   border: string;
+}
+
+interface WallpaperPreset {
+  id: string;
+  name: string;
+  url: string;
 }
 
 const STORY_THEMES: StoryTheme[] = [
@@ -126,6 +136,153 @@ const STORY_THEMES: StoryTheme[] = [
   },
 ];
 
+const WALLPAPER_PRESETS: WallpaperPreset[] = [
+  {
+    id: 'mountains',
+    name: 'Sunrise Dawn',
+    url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'sunset_ocean',
+    name: 'Golden Shore',
+    url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'starry_sky',
+    name: 'Heavens',
+    url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'forest_mist',
+    name: 'Green Pastures',
+    url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'sun_rays',
+    name: 'Heavenly Rays',
+    url: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'meadow_flowers',
+    name: 'Living Meadow',
+    url: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800&auto=format&fit=crop&q=80',
+  },
+];
+
+interface DraggablePercentageBarProps {
+  label: string;
+  iconName?: keyof typeof Ionicons.glyphMap;
+  value: number; // 0 to 1
+  displayValue: string;
+  onValueChange: (val: number) => void;
+  onSlidingStart?: () => void;
+  onSlidingComplete?: () => void;
+  fillColor?: string;
+}
+
+const DraggablePercentageBar: React.FC<DraggablePercentageBarProps> = ({
+  label,
+  iconName,
+  value,
+  displayValue,
+  onValueChange,
+  onSlidingStart,
+  onSlidingComplete,
+  fillColor,
+}) => {
+  const { colors } = useTheme();
+  const [trackWidth, setTrackWidth] = useState<number>(0);
+  const trackRef = useRef<View>(null);
+
+  const activeFillColor = fillColor || colors.tint;
+  const clampedRatio = Math.max(0, Math.min(1, value));
+
+  const updateFromPageX = (pageX: number) => {
+    if (!trackRef.current || trackWidth <= 0) return;
+    trackRef.current.measure((x, y, width, height, pageXOffset) => {
+      const touchOffset = pageX - pageXOffset;
+      const newRatio = Math.max(0, Math.min(1, touchOffset / width));
+      onValueChange(newRatio);
+    });
+  };
+
+  const barPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: (evt) => {
+          onSlidingStart?.();
+          Haptics.selectionAsync().catch(() => {});
+          updateFromPageX(evt.nativeEvent.pageX);
+        },
+        onPanResponderMove: (evt) => {
+          updateFromPageX(evt.nativeEvent.pageX);
+        },
+        onPanResponderRelease: () => {
+          onSlidingComplete?.();
+        },
+        onPanResponderTerminate: () => {
+          onSlidingComplete?.();
+        },
+      }),
+    [trackWidth, onValueChange, onSlidingStart, onSlidingComplete]
+  );
+
+  return (
+    <View style={styles.sliderBarContainer}>
+      <View style={styles.sliderBarHeader}>
+        <View style={styles.sliderBarLabelGroup}>
+          {iconName && (
+            <Ionicons name={iconName} size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
+          )}
+          <Text style={[styles.sliderBarTitle, { color: colors.textSecondary }]}>{label}</Text>
+        </View>
+        <View style={[styles.sliderBadge, { backgroundColor: colors.tintLight }]}>
+          <Text style={[styles.sliderBadgeText, { color: colors.tint }]}>{displayValue}</Text>
+        </View>
+      </View>
+
+      {/* Draggable Area Wrapper (Touch hitbox) */}
+      <View
+        ref={trackRef}
+        {...barPanResponder.panHandlers}
+        onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+        style={styles.sliderHitbox}
+      >
+        {/* Slim Draggable Percentage Loading Bar Track */}
+        <View style={[styles.sliderTrack, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.sliderFilledBar,
+              {
+                width: `${Math.round(clampedRatio * 100)}%`,
+                backgroundColor: activeFillColor,
+              },
+            ]}
+          />
+        </View>
+
+        {/* Circular Knob Overlapping the Track */}
+        <View
+          pointerEvents="none"
+          style={[
+            styles.sliderKnob,
+            {
+              left: trackWidth > 0 ? Math.max(0, Math.min(trackWidth - 22, clampedRatio * (trackWidth - 22))) : 0,
+              backgroundColor: '#FFFFFF',
+              borderColor: activeFillColor,
+            },
+          ]}
+        />
+      </View>
+    </View>
+  );
+};
+
 export const StoryShareModal: React.FC<StoryShareModalProps> = ({
   visible,
   verseText,
@@ -135,18 +292,213 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
   onClose,
 }) => {
   const { colors } = useTheme();
+
+  // Background modes: 'gradient' | 'photo'
+  const [bgMode, setBgMode] = useState<'gradient' | 'photo'>('gradient');
   const [selectedThemeId, setSelectedThemeId] = useState<string>('celestial');
-  const [aspectRatio, setAspectRatio] = useState<'story' | 'square'>('story'); // 'story' (9:16) or 'square' (1:1)
+  const [customImageUri, setCustomImageUri] = useState<string | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+
+  // Styling & layout controls
+  const [aspectRatio, setAspectRatio] = useState<'story' | 'square'>('story'); // 'story' (9:16 portrait) or 'square' (1:1)
+  const [overlayOpacity, setOverlayOpacity] = useState<number>(0.4); // Dimming over photos (0 to 0.85)
+  const [fontFamilyMode, setFontFamilyMode] = useState<'serif' | 'sans'>('serif');
+
+  // Font Size Resizing (Draggable Bar, 14px to 34px)
+  const defaultFontSize = verseText.length > 200 ? 17 : verseText.length > 120 ? 19 : 22;
+  const [fontSize, setFontSize] = useState<number>(defaultFontSize);
+
+  // Modal scroll lock state (locks outer scroll while dragging)
+  const [scrollEnabled, setScrollEnabled] = useState<boolean>(true);
+
+  // Interactive Dragging State (1-Finger Repositioning Only)
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right' | 'justify'>('center');
+
+  const panRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // PanResponder to handle smooth 1-finger dragging with full scroll locking
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          setScrollEnabled(false); // Lock modal scroll immediately on touch
+        },
+        onPanResponderMove: (_, gestureState) => {
+          // 1-finger drag repositioning anywhere on the canvas
+          const nextX = Math.max(-150, Math.min(150, panRef.current.x + gestureState.dx));
+          const nextY = Math.max(-200, Math.min(200, panRef.current.y + gestureState.dy));
+          setPan({ x: nextX, y: nextY });
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          setScrollEnabled(true); // Unlock modal scroll on release
+          panRef.current = {
+            x: Math.max(-150, Math.min(150, panRef.current.x + gestureState.dx)),
+            y: Math.max(-200, Math.min(200, panRef.current.y + gestureState.dy)),
+          };
+        },
+        onPanResponderTerminate: () => {
+          setScrollEnabled(true);
+        },
+      }),
+    []
+  );
+
+  const handleResetPosition = () => {
+    setPan({ x: 0, y: 0 });
+    panRef.current = { x: 0, y: 0 };
+    setFontSize(defaultFontSize);
+    Haptics.selectionAsync().catch(() => {});
+  };
+
   const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [copiedToast, setCopiedToast] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const cardRef = useRef<View>(null);
 
   const currentTheme = STORY_THEMES.find((t) => t.id === selectedThemeId) || STORY_THEMES[0];
 
-  const formattedShareText = `"${verseText}"\n— ${citation} (${version})\n\nShared via SHEPHERD Bible Study App ✨ #VerseOfTheDay #Faith #BibleVerse`;
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
-  // 1. Share directly to Facebook Story / Messenger My Day / System Sheet with Card Image
+  const formattedShareText = `"${verseText}"\n— ${citation} (${version})\n\nShared via SHEPHERD Bible App ✨ #VerseOfTheDay #BibleVerse #Faith`;
+
+  // Pick image from user gallery (No cropping, full portrait preserved)
+  const handlePickImageFromGallery = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Photo Permission Needed',
+          'Please allow photo library access to choose a background image for your verse wallpaper.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false, // No forced crop, keeps full photo
+        quality: 0.95,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]?.uri) {
+        setCustomImageUri(result.assets[0].uri);
+        setSelectedPresetId(null);
+        setBgMode('photo');
+        await Haptics.selectionAsync();
+      }
+    } catch (e) {
+      console.error('Gallery pick error:', e);
+      Alert.alert('Notice', 'Could not open gallery.');
+    }
+  };
+
+  // Take photo with camera (No forced crop)
+  const handleTakePhoto = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Camera Permission Needed',
+          'Please allow camera access to take a photo for your verse card.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false, // No crop
+        quality: 0.95,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]?.uri) {
+        setCustomImageUri(result.assets[0].uri);
+        setSelectedPresetId(null);
+        setBgMode('photo');
+        await Haptics.selectionAsync();
+      }
+    } catch (e) {
+      console.error('Camera capture error:', e);
+      Alert.alert('Notice', 'Could not open camera.');
+    }
+  };
+
+  const handleSelectPreset = (preset: WallpaperPreset) => {
+    setSelectedPresetId(preset.id);
+    setCustomImageUri(preset.url);
+    setBgMode('photo');
+    Haptics.selectionAsync().catch(() => {});
+  };
+
+  const handleSelectGradientTheme = (themeId: string) => {
+    setSelectedThemeId(themeId);
+    setBgMode('gradient');
+    setCustomImageUri(null);
+    setSelectedPresetId(null);
+    Haptics.selectionAsync().catch(() => {});
+  };
+
+  // Save Verse Card Image Directly to Device Gallery
+  const handleSaveToGallery = async () => {
+    try {
+      setIsExporting(true);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      if (!cardRef.current) {
+        Alert.alert('Notice', 'Could not capture snapshot.');
+        return;
+      }
+
+      const imageUri = await captureRef(cardRef.current, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+      });
+
+      if (!imageUri) {
+        Alert.alert('Notice', 'Failed to generate image file.');
+        return;
+      }
+
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status === 'granted') {
+        await MediaLibrary.saveToLibraryAsync(imageUri);
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast('Saved to Gallery! 🖼️ Your verse image is in your Photos.');
+      } else {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(imageUri, {
+            mimeType: 'image/png',
+            dialogTitle: 'Save / Share Verse Image',
+          });
+        } else {
+          Alert.alert('Saved', 'Verse image created successfully!');
+        }
+      }
+    } catch (err) {
+      console.error('Error saving image to gallery:', err);
+      try {
+        if (cardRef.current) {
+          const imageUri = await captureRef(cardRef.current, { format: 'png', quality: 1, result: 'tmpfile' });
+          if (imageUri && (await Sharing.isAvailableAsync())) {
+            await Sharing.shareAsync(imageUri);
+          }
+        }
+      } catch {
+        Alert.alert('Notice', 'Could not export image directly on this platform.');
+      }
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Share to Facebook Story / Messenger My Day / System Sheet
   const handleShareToFacebookStory = async () => {
     try {
       setIsExporting(true);
@@ -154,15 +506,11 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
 
       let imageUri: string | null = null;
       if (cardRef.current) {
-        try {
-          imageUri = await captureRef(cardRef.current, {
-            format: 'png',
-            quality: 1,
-            result: 'tmpfile',
-          });
-        } catch (captureErr) {
-          console.warn('ViewShot capture notice:', captureErr);
-        }
+        imageUri = await captureRef(cardRef.current, {
+          format: 'png',
+          quality: 1,
+          result: 'tmpfile',
+        });
       }
 
       if (imageUri && (await Sharing.isAvailableAsync())) {
@@ -172,7 +520,6 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
           UTI: 'public.png',
         });
       } else {
-        // Fallback to Native Share with Text & Deep Links
         const fbStoryUrl = 'facebook-stories://share';
         const supported = await Linking.canOpenURL(fbStoryUrl).catch(() => false);
         if (supported) {
@@ -185,8 +532,7 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
         }
       }
     } catch (err) {
-      console.error('Error sharing to Facebook Story:', err);
-      // Fallback share
+      console.error('Error sharing story:', err);
       try {
         await Share.share({
           title: `${citation} (${version})`,
@@ -198,49 +544,16 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
     }
   };
 
-  // 2. Save Story Card Image to Device
-  const handleSaveCardImage = async () => {
-    try {
-      setIsExporting(true);
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-      if (cardRef.current) {
-        const imageUri = await captureRef(cardRef.current, {
-          format: 'png',
-          quality: 1,
-          result: 'tmpfile',
-        });
-
-        if (imageUri && (await Sharing.isAvailableAsync())) {
-          await Sharing.shareAsync(imageUri, {
-            mimeType: 'image/png',
-            dialogTitle: 'Save / Export Story Card Image',
-          });
-        } else {
-          Alert.alert('Saved', 'Verse Story Card snapshot captured successfully!');
-        }
-      }
-    } catch (e) {
-      console.error('Error saving image:', e);
-      Alert.alert('Notice', 'Could not export image directly on this platform.');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  // 3. Copy Verse for Facebook Status / Story Caption
   const handleCopyVerse = async () => {
     try {
       await Clipboard.setStringAsync(formattedShareText);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setCopiedToast(true);
-      setTimeout(() => setCopiedToast(false), 2500);
+      showToast('Verse copied to clipboard!');
     } catch (e) {
       console.warn('Copy notice:', e);
     }
   };
 
-  // 4. Standard System Share Dialog
   const handleSystemShare = async () => {
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -255,6 +568,8 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
 
   if (!visible) return null;
 
+  const activeTextColor = bgMode === 'photo' ? '#FFFFFF' : currentTheme.textColor;
+
   return (
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
       <View style={styles.backdrop}>
@@ -262,15 +577,15 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
             <View style={styles.headerTitleGroup}>
-              <View style={[styles.fbStoryBadge, { backgroundColor: '#1877F2' }]}>
-                <Ionicons name="logo-facebook" size={16} color="#FFFFFF" />
+              <View style={[styles.fbStoryBadge, { backgroundColor: colors.tint }]}>
+                <Ionicons name="image" size={16} color="#FFFFFF" />
               </View>
               <View>
                 <Text style={[styles.headerTitle, { color: colors.text }]}>
-                  Facebook Story & My Day Studio
+                  Verse Wallpaper & Image Studio
                 </Text>
                 <Text style={[styles.headerSub, { color: colors.textSecondary }]}>
-                  Customize and share Scripture card to your Story
+                  Drag verse to move • Adjust text size & contrast
                 </Text>
               </View>
             </View>
@@ -284,8 +599,13 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* Story Card Canvas Preview */}
+          <ScrollView
+            scrollEnabled={scrollEnabled}
+            style={styles.scrollArea}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Story Card Canvas Preview (Portrait Size by Default) */}
             <View style={styles.previewContainer}>
               <View
                 ref={cardRef}
@@ -294,159 +614,337 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
                   styles.storyCard,
                   aspectRatio === 'story' ? styles.storyCardTall : styles.storyCardSquare,
                   {
-                    backgroundColor: currentTheme.bgGradient[1],
+                    backgroundColor: bgMode === 'gradient' ? currentTheme.bgGradient[1] : '#000000',
                     borderColor: currentTheme.border,
                   },
                 ]}
               >
-                {/* Background decorative aura circles */}
+                {/* Photo Background (If in photo mode) */}
+                {bgMode === 'photo' && customImageUri ? (
+                  <>
+                    <ExpoImage
+                      source={{ uri: customImageUri }}
+                      style={StyleSheet.absoluteFillObject}
+                      contentFit="cover"
+                      transition={200}
+                    />
+                    {/* Dimming / Contrast Overlay */}
+                    <View
+                      style={[
+                        StyleSheet.absoluteFillObject,
+                        {
+                          backgroundColor: '#000000',
+                          opacity: overlayOpacity,
+                        },
+                      ]}
+                    />
+                  </>
+                ) : (
+                  /* Background decorative aura circles for gradient themes */
+                  <>
+                    <View
+                      style={[
+                        styles.auraTop,
+                        {
+                          backgroundColor: currentTheme.accentColor,
+                          opacity: currentTheme.id === 'light' ? 0.08 : 0.2,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.auraBottom,
+                        {
+                          backgroundColor: currentTheme.accentColor,
+                          opacity: currentTheme.id === 'light' ? 0.06 : 0.15,
+                        },
+                      ]}
+                    />
+                  </>
+                )}
+
+                {/* Interactive Touch Draggable Verse Text Box (1-Finger Dragging) */}
                 <View
+                  {...panResponder.panHandlers}
                   style={[
-                    styles.auraTop,
+                    styles.draggableVerseContainer,
                     {
-                      backgroundColor: currentTheme.accentColor,
-                      opacity: currentTheme.id === 'light' ? 0.08 : 0.2,
+                      transform: [
+                        { translateX: pan.x },
+                        { translateY: pan.y },
+                      ],
                     },
                   ]}
-                />
-                <View
-                  style={[
-                    styles.auraBottom,
-                    {
-                      backgroundColor: currentTheme.accentColor,
-                      opacity: currentTheme.id === 'light' ? 0.06 : 0.15,
-                    },
-                  ]}
-                />
-
-                {/* Card Top Pill: Scripture of the Day & Translation */}
-                <View style={styles.cardHeaderRow}>
-                  <View style={[styles.cardTagPill, { backgroundColor: currentTheme.cardBg, borderColor: currentTheme.border }]}>
-                    <Ionicons name="sparkles" size={11} color={currentTheme.accentColor} style={{ marginRight: 4 }} />
-                    <Text style={[styles.cardTagText, { color: currentTheme.accentColor }]}>
-                      DAILY SCRIPTURE
-                    </Text>
-                  </View>
-
-                  <View style={[styles.versionPill, { backgroundColor: currentTheme.cardBg, borderColor: currentTheme.border }]}>
-                    <Text style={[styles.versionPillText, { color: currentTheme.textColor }]}>
-                      {version}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Card Quote Icon */}
-                <Text style={[styles.quoteSymbol, { color: currentTheme.accentColor, opacity: 0.35 }]}>
-                  “
-                </Text>
-
-                {/* Verse Text Main Content */}
-                <View style={styles.verseTextWrapper}>
+                >
                   <Text
                     style={[
                       styles.storyVerseText,
                       {
-                        color: currentTheme.textColor,
-                        fontSize: verseText.length > 200 ? 17 : verseText.length > 120 ? 19 : 22,
-                        lineHeight: verseText.length > 200 ? 26 : verseText.length > 120 ? 29 : 33,
+                        color: activeTextColor,
+                        fontFamily: fontFamilyMode === 'serif' ? 'serif' : 'System',
+                        fontSize: fontSize,
+                        lineHeight: Math.round(fontSize * 1.5),
+                        textAlign: textAlign,
+                        textShadowColor: 'rgba(0, 0, 0, 0.85)',
+                        textShadowOffset: { width: 0, height: 1 },
+                        textShadowRadius: 5,
                       },
                     ]}
                   >
-                    "{verseText}"
+                    {verseText}
                   </Text>
 
                   {/* Citation */}
-                  <View style={styles.citationRow}>
-                    <View style={[styles.citationLine, { backgroundColor: currentTheme.accentColor }]} />
-                    <Text style={[styles.citationText, { color: currentTheme.accentColor }]}>
+                  <View
+                    style={[
+                      styles.citationRow,
+                      textAlign === 'left' && { justifyContent: 'flex-start' },
+                      textAlign === 'center' && { justifyContent: 'center' },
+                      textAlign === 'right' && { justifyContent: 'flex-end' },
+                      textAlign === 'justify' && { justifyContent: 'flex-end' },
+                    ]}
+                  >
+                    {textAlign !== 'right' && (
+                      <View style={[styles.citationLine, { backgroundColor: currentTheme.accentColor }]} />
+                    )}
+                    <Text
+                      style={[
+                        styles.citationText,
+                        {
+                          color: currentTheme.accentColor,
+                          fontSize: Math.max(9, Math.min(14, fontSize > 14 ? fontSize - 6 : 11)),
+                          textShadowColor: 'rgba(0, 0, 0, 0.85)',
+                          textShadowOffset: { width: 0, height: 1 },
+                          textShadowRadius: 4,
+                        },
+                      ]}
+                    >
                       {citation}
                     </Text>
+                    {textAlign === 'right' && (
+                      <View style={[styles.citationLine, { backgroundColor: currentTheme.accentColor, marginLeft: 8, marginRight: 0 }]} />
+                    )}
                   </View>
                 </View>
 
-                {/* Card Footer: Date & App Branding */}
-                <View style={[styles.cardFooter, { borderTopColor: currentTheme.border }]}>
+                {/* Card Footer: App Branding Only (SHEPHERD) & Optional Date */}
+                <View style={[styles.cardFooter, { borderTopColor: 'rgba(255,255,255,0.18)' }]}>
                   <View style={styles.appBrandRow}>
-                    <Ionicons name="book" size={12} color={currentTheme.subTextColor} style={{ marginRight: 4 }} />
-                    <Text style={[styles.appBrandText, { color: currentTheme.subTextColor }]}>
-                      SHEPHERD • Daily Verse
+                    <Ionicons name="book" size={12} color="rgba(255,255,255,0.85)" style={{ marginRight: 5 }} />
+                    <Text style={[styles.appBrandText, { color: 'rgba(255,255,255,0.85)' }]}>
+                      SHEPHERD
                     </Text>
                   </View>
                   {dateString ? (
-                    <Text style={[styles.cardDateText, { color: currentTheme.subTextColor }]}>
+                    <Text style={[styles.cardDateText, { color: 'rgba(255,255,255,0.85)' }]}>
                       {dateString}
                     </Text>
                   ) : null}
                 </View>
               </View>
+
+              {/* Touch Gesture Helper Badge */}
+              <View style={[styles.gestureHelpBadge, { backgroundColor: colors.glassInput, borderColor: colors.border }]}>
+                <Ionicons name="finger-print" size={13} color={colors.tint} style={{ marginRight: 6 }} />
+                <Text style={[styles.gestureHelpText, { color: colors.textSecondary }]}>
+                  Drag verse box to reposition anywhere
+                </Text>
+              </View>
             </View>
 
-            {/* Format Selector: 9:16 Story vs 1:1 Square */}
+            {/* Controls Section */}
             <View style={styles.controlsSection}>
-              <View style={styles.formatRow}>
+              {/* 1. Photo Contrast / Dimming Draggable Percentage Loading Bar */}
+              {bgMode === 'photo' && (
+                <DraggablePercentageBar
+                  label="PHOTO CONTRAST / DIMMING"
+                  iconName="contrast"
+                  value={overlayOpacity / 0.85}
+                  displayValue={`${Math.round((overlayOpacity / 0.85) * 100)}%`}
+                  onValueChange={(ratio) => setOverlayOpacity(Number((ratio * 0.85).toFixed(2)))}
+                  onSlidingStart={() => setScrollEnabled(false)}
+                  onSlidingComplete={() => setScrollEnabled(true)}
+                  fillColor={colors.tint}
+                />
+              )}
+
+              {/* 2. Verse Font Size Draggable Percentage Loading Bar (Scale down to 1) */}
+              <DraggablePercentageBar
+                label="VERSE TEXT SIZE"
+                iconName="text"
+                value={(fontSize - 1) / (36 - 1)}
+                displayValue={`${fontSize}px`}
+                onValueChange={(ratio) => setFontSize(Math.max(1, Math.round(1 + ratio * 35)))}
+                onSlidingStart={() => setScrollEnabled(false)}
+                onSlidingComplete={() => setScrollEnabled(true)}
+                fillColor={colors.gold}
+              />
+
+              {/* 3. Combined 1-Line Toolbar: Format (9:16 & 1:1) and Alignment (Icons Only) */}
+              <View style={styles.quickToolsInlineRow}>
+                {/* Format 9:16 vs 1:1 */}
+                <View style={styles.formatInlineGroup}>
+                  <TouchableOpacity
+                    style={[
+                      styles.formatInlineBtn,
+                      {
+                        backgroundColor: aspectRatio === 'story' ? colors.tintLight : colors.glassInput,
+                        borderColor: aspectRatio === 'story' ? colors.tint : colors.border,
+                      },
+                    ]}
+                    onPress={() => setAspectRatio('story')}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name="phone-portrait-outline"
+                      size={14}
+                      color={aspectRatio === 'story' ? colors.tint : colors.textSecondary}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text
+                      style={[
+                        styles.formatInlineBtnText,
+                        {
+                          color: aspectRatio === 'story' ? colors.tint : colors.text,
+                          fontWeight: aspectRatio === 'story' ? '800' : '600',
+                        },
+                      ]}
+                    >
+                      9:16
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.formatInlineBtn,
+                      {
+                        backgroundColor: aspectRatio === 'square' ? colors.tintLight : colors.glassInput,
+                        borderColor: aspectRatio === 'square' ? colors.tint : colors.border,
+                        marginLeft: 6,
+                      },
+                    ]}
+                    onPress={() => setAspectRatio('square')}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name="square-outline"
+                      size={14}
+                      color={aspectRatio === 'square' ? colors.tint : colors.textSecondary}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text
+                      style={[
+                        styles.formatInlineBtnText,
+                        {
+                          color: aspectRatio === 'square' ? colors.tint : colors.text,
+                          fontWeight: aspectRatio === 'square' ? '800' : '600',
+                        },
+                      ]}
+                    >
+                      1:1
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Alignment (Icon Only matching reference) + Reset */}
+                <View style={styles.alignInlineGroup}>
+                  {[
+                    { key: 'left', icon: 'format-align-left' },
+                    { key: 'center', icon: 'format-align-center' },
+                    { key: 'right', icon: 'format-align-right' },
+                    { key: 'justify', icon: 'format-align-justify' },
+                  ].map((item) => {
+                    const isSelected = textAlign === item.key;
+                    return (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={[
+                          styles.alignIconBtn,
+                          {
+                            backgroundColor: isSelected ? colors.tint : colors.glassInput,
+                            borderColor: isSelected ? colors.tint : colors.border,
+                          },
+                        ]}
+                        onPress={() => {
+                          setTextAlign(item.key as any);
+                          Haptics.selectionAsync().catch(() => {});
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialCommunityIcons
+                          name={item.icon as any}
+                          size={18}
+                          color={isSelected ? '#FFFFFF' : colors.text}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  {(pan.x !== 0 || pan.y !== 0 || fontSize !== defaultFontSize) && (
+                    <TouchableOpacity
+                      style={[styles.resetIconBtn, { backgroundColor: colors.tintLight }]}
+                      onPress={handleResetPosition}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="refresh" size={14} color={colors.tint} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              {/* Upload Photo & Take Picture Buttons */}
+              <View style={styles.imageActionRow}>
                 <TouchableOpacity
-                  style={[
-                    styles.formatBtn,
-                    {
-                      backgroundColor: aspectRatio === 'story' ? colors.tintLight : colors.glassInput,
-                      borderColor: aspectRatio === 'story' ? colors.tint : colors.border,
-                    },
-                  ]}
-                  onPress={() => setAspectRatio('story')}
+                  style={[styles.imageActionBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
+                  onPress={handlePickImageFromGallery}
                   activeOpacity={0.7}
                 >
-                  <Ionicons
-                    name="phone-portrait-outline"
-                    size={16}
-                    color={aspectRatio === 'story' ? colors.tint : colors.textSecondary}
-                    style={{ marginRight: 6 }}
-                  />
-                  <Text
-                    style={[
-                      styles.formatBtnText,
-                      { color: aspectRatio === 'story' ? colors.tint : colors.text, fontWeight: '700' },
-                    ]}
-                  >
-                    9:16 Story (FB My Day)
-                  </Text>
+                  <Ionicons name="images" size={17} color={colors.tint} style={{ marginRight: 6 }} />
+                  <Text style={[styles.imageActionBtnText, { color: colors.text }]}>Upload Photo</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[
-                    styles.formatBtn,
-                    {
-                      backgroundColor: aspectRatio === 'square' ? colors.tintLight : colors.glassInput,
-                      borderColor: aspectRatio === 'square' ? colors.tint : colors.border,
-                      marginLeft: 8,
-                    },
-                  ]}
-                  onPress={() => setAspectRatio('square')}
+                  style={[styles.imageActionBtn, { backgroundColor: colors.glassInput, borderColor: colors.border, marginLeft: 8 }]}
+                  onPress={handleTakePhoto}
                   activeOpacity={0.7}
                 >
-                  <Ionicons
-                    name="square-outline"
-                    size={16}
-                    color={aspectRatio === 'square' ? colors.tint : colors.textSecondary}
-                    style={{ marginRight: 6 }}
-                  />
-                  <Text
-                    style={[
-                      styles.formatBtnText,
-                      { color: aspectRatio === 'square' ? colors.tint : colors.text, fontWeight: '700' },
-                    ]}
-                  >
-                    1:1 Square Post
-                  </Text>
+                  <Ionicons name="camera" size={17} color={colors.tint} style={{ marginRight: 6 }} />
+                  <Text style={[styles.imageActionBtnText, { color: colors.text }]}>Take Picture</Text>
                 </TouchableOpacity>
               </View>
 
+              {/* Preset Nature Wallpapers Scroll */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetScroll}>
+                {WALLPAPER_PRESETS.map((preset) => {
+                  const isSelected = bgMode === 'photo' && (selectedPresetId === preset.id || customImageUri === preset.url);
+                  return (
+                    <TouchableOpacity
+                      key={preset.id}
+                      style={[
+                        styles.presetThumbWrapper,
+                        { borderColor: isSelected ? colors.tint : colors.border, borderWidth: isSelected ? 2 : 1 },
+                      ]}
+                      onPress={() => handleSelectPreset(preset)}
+                      activeOpacity={0.8}
+                    >
+                      <ExpoImage source={{ uri: preset.url }} style={styles.presetThumb} contentFit="cover" />
+                      <View style={styles.presetThumbLabel}>
+                        <Text style={styles.presetThumbLabelText} numberOfLines={1}>
+                          {preset.name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
               {/* Theme Gradients Scroll */}
-              <Text style={[styles.controlLabel, { color: colors.textSecondary, marginTop: 14 }]}>
-                COLOR PALETTES
+              <Text style={[styles.controlLabel, { color: colors.textSecondary, marginTop: 12 }]}>
+                COLOR GRADIENT THEMES
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.themeScroll}>
                 {STORY_THEMES.map((theme) => {
-                  const isSelected = selectedThemeId === theme.id;
+                  const isSelected = bgMode === 'gradient' && selectedThemeId === theme.id;
                   return (
                     <TouchableOpacity
                       key={theme.id}
@@ -458,7 +956,7 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
                           borderWidth: isSelected ? 2 : 1,
                         },
                       ]}
-                      onPress={() => setSelectedThemeId(theme.id)}
+                      onPress={() => handleSelectGradientTheme(theme.id)}
                       activeOpacity={0.7}
                     >
                       <View style={[styles.themeChipDot, { backgroundColor: theme.accentColor }]} />
@@ -487,46 +985,43 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
               </ScrollView>
             </View>
 
-            {/* Success Toast */}
-            {copiedToast && (
+            {/* Toast Notice */}
+            {toastMessage && (
               <View style={[styles.toastCard, { backgroundColor: colors.tint }]}>
                 <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                <Text style={styles.toastText}>Verse copied to clipboard for Facebook!</Text>
+                <Text style={styles.toastText}>{toastMessage}</Text>
               </View>
             )}
 
             {/* Action Buttons */}
             <View style={styles.actionButtonsContainer}>
-              {/* Primary: Share to Facebook Story / My Day */}
               <TouchableOpacity
-                style={[styles.primaryFbShareBtn, { backgroundColor: '#1877F2' }]}
-                onPress={handleShareToFacebookStory}
+                style={[styles.primarySaveBtn, { backgroundColor: colors.gold }]}
+                onPress={handleSaveToGallery}
                 disabled={isExporting}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
                 {isExporting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color="#000000" />
                 ) : (
                   <>
-                    <Ionicons name="logo-facebook" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                    <Text style={styles.primaryFbShareText}>Share to Facebook My Day / Story</Text>
+                    <Ionicons name="download" size={20} color="#000000" style={{ marginRight: 8 }} />
+                    <Text style={styles.primarySaveBtnText}>Save to Gallery (Photos)</Text>
                   </>
                 )}
               </TouchableOpacity>
 
-              {/* Secondary Actions Row */}
-              <View style={styles.secondaryActionsRow}>
-                {/* Save Image */}
-                <TouchableOpacity
-                  style={[styles.secondaryActionBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
-                  onPress={handleSaveCardImage}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="download-outline" size={16} color={colors.text} style={{ marginRight: 5 }} />
-                  <Text style={[styles.secondaryActionText, { color: colors.text }]}>Save Card</Text>
-                </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryFbShareBtn, { backgroundColor: '#1877F2', marginTop: 10 }]}
+                onPress={handleShareToFacebookStory}
+                disabled={isExporting}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="logo-facebook" size={19} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.primaryFbShareText}>Share to Facebook My Day / Story</Text>
+              </TouchableOpacity>
 
-                {/* Copy Text */}
+              <View style={styles.secondaryActionsRow}>
                 <TouchableOpacity
                   style={[styles.secondaryActionBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
                   onPress={handleCopyVerse}
@@ -536,14 +1031,13 @@ export const StoryShareModal: React.FC<StoryShareModalProps> = ({
                   <Text style={[styles.secondaryActionText, { color: colors.text }]}>Copy Text</Text>
                 </TouchableOpacity>
 
-                {/* More Options */}
                 <TouchableOpacity
                   style={[styles.secondaryActionBtn, { backgroundColor: colors.glassInput, borderColor: colors.border }]}
                   onPress={handleSystemShare}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="share-social-outline" size={16} color={colors.text} style={{ marginRight: 5 }} />
-                  <Text style={[styles.secondaryActionText, { color: colors.text }]}>More</Text>
+                  <Text style={[styles.secondaryActionText, { color: colors.text }]}>Share App...</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -564,7 +1058,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
-    maxHeight: '92%',
+    maxHeight: '94%',
     paddingBottom: Platform.OS === 'ios' ? 24 : 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -6 },
@@ -621,7 +1115,7 @@ const styles = StyleSheet.create({
   previewContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   storyCard: {
     width: Math.min(SCREEN_WIDTH - 56, 340),
@@ -638,7 +1132,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   storyCardTall: {
-    minHeight: 400,
+    minHeight: 460,
   },
   storyCardSquare: {
     minHeight: 320,
@@ -659,60 +1153,27 @@ const styles = StyleSheet.create({
     height: 180,
     borderRadius: 90,
   },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 2,
-    marginBottom: 12,
-  },
-  cardTagPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  cardTagText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  versionPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  versionPillText: {
-    fontSize: 10,
-    fontWeight: '800',
+  draggableVerseContainer: {
+    zIndex: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 16,
   },
   quoteSymbol: {
-    fontSize: 48,
-    lineHeight: 48,
+    fontSize: 44,
+    lineHeight: 44,
     fontFamily: 'serif',
-    marginTop: 4,
+    marginTop: 2,
     marginBottom: -16,
-    zIndex: 2,
-  },
-  verseTextWrapper: {
-    flex: 1,
-    justifyContent: 'center',
-    zIndex: 2,
-    marginVertical: 12,
   },
   storyVerseText: {
     fontStyle: 'italic',
     fontWeight: '500',
-    textAlign: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   citationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
   },
   citationLine: {
     width: 18,
@@ -721,7 +1182,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   citationText: {
-    fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
@@ -740,18 +1200,92 @@ const styles = StyleSheet.create({
   appBrandText: {
     fontSize: 10,
     fontWeight: '700',
+    letterSpacing: 0.5,
   },
   cardDateText: {
     fontSize: 9,
   },
+  gestureHelpBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  gestureHelpText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
   controlsSection: {
     marginBottom: 16,
   },
-  formatRow: {
+  sliderBarContainer: {
+    marginBottom: 14,
+  },
+  sliderBarHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
   },
-  formatBtn: {
+  sliderBarLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sliderBarTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  sliderBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  sliderBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  sliderHitbox: {
+    height: 32,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  sliderTrack: {
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  sliderFilledBar: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: 4,
+  },
+  sliderKnob: {
+    position: 'absolute',
+    top: 5,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  imageActionRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  imageActionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -760,8 +1294,82 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  formatBtnText: {
+  imageActionBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  presetScroll: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  presetThumbWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    marginRight: 8,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  presetThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  presetThumbLabel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  presetThumbLabelText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  quickToolsInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  formatInlineGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  formatInlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  formatInlineBtnText: {
     fontSize: 12,
+  },
+  alignInlineGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  alignIconBtn: {
+    width: 34,
+    height: 32,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 5,
+  },
+  resetIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
   },
   controlLabel: {
     fontSize: 10,
@@ -801,44 +1409,56 @@ const styles = StyleSheet.create({
   },
   toastText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   actionButtonsContainer: {
-    marginTop: 4,
+    marginTop: 6,
+  },
+  primarySaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  primarySaveBtnText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   primaryFbShareBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 16,
-    shadowColor: '#1877F2',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-    marginBottom: 10,
+    paddingVertical: 13,
+    borderRadius: 14,
   },
   primaryFbShareText: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.2,
+    fontSize: 14,
+    fontWeight: '700',
   },
   secondaryActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 10,
   },
   secondaryActionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 11,
+    paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    marginHorizontal: 3,
+    marginHorizontal: 4,
   },
   secondaryActionText: {
     fontSize: 12,

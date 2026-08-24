@@ -109,11 +109,17 @@ export const ActiveAlarmModal: React.FC<ActiveAlarmModalProps> = ({
 
   const handleReadVerse = () => {
     handleDismiss();
+    let verseNum = '1';
+    if (citation) {
+      const match = citation.match(/:(\d+)/);
+      if (match && match[1]) verseNum = match[1];
+    }
     router.replace({
       pathname: '/(tabs)/bible',
       params: {
         bookId: bookId.toString(),
         chapter: chapter.toString(),
+        verse: verseNum,
       },
     });
   };

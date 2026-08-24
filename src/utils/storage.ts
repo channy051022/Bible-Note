@@ -209,7 +209,6 @@ export const StorageKeys = {
   FONT_SIZE: 'reader_font_size', // number
   LAST_READ_BOOK: 'last_read_book_id', // number
   LAST_READ_CHAPTER: 'last_read_chapter', // number
-  ACTIVE_PLAN_ID: 'active_plan_id', // string
   BIBLE_VERSION: 'bible_version', // string
   DAILY_PRAYER: 'custom_daily_prayer', // DailyPrayer
   DOWNLOADED_VERSIONS: 'downloaded_bible_versions', // string[]

@@ -45,7 +45,11 @@ export default function SavedModalScreen() {
   const handleOpenBookmark = (bm: Bookmark) => {
     router.replace({
       pathname: '/(tabs)/bible',
-      params: { bookId: bm.book_id.toString(), chapter: bm.chapter.toString() },
+      params: {
+        bookId: bm.book_id.toString(),
+        chapter: bm.chapter.toString(),
+        verse: bm.verse.toString(),
+      },
     });
   };
 

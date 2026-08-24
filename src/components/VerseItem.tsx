@@ -7,6 +7,7 @@ import { useTheme } from '../hooks/useTheme';
 interface VerseItemProps {
   verse: Verse;
   isBookmarked: boolean;
+  isHighlighted?: boolean;
   fontSize?: number;
   isFullScreen?: boolean;
   onToggleBookmark: (verseNumber: number) => void;
@@ -17,6 +18,7 @@ interface VerseItemProps {
 export const VerseItem: React.FC<VerseItemProps> = ({
   verse,
   isBookmarked,
+  isHighlighted = false,
   fontSize = 18,
   isFullScreen = false,
   onToggleBookmark,
@@ -26,14 +28,43 @@ export const VerseItem: React.FC<VerseItemProps> = ({
   const { colors } = useTheme();
 
   return (
-    <View style={[styles.container, { borderBottomColor: colors.border }, isFullScreen && styles.fullPageContainer]}>
+    <View
+      style={[
+        styles.container,
+        { borderBottomColor: colors.border },
+        isFullScreen && styles.fullPageContainer,
+        isHighlighted && [
+          styles.highlightedContainer,
+          {
+            backgroundColor: colors.verseHighlight || 'rgba(229, 169, 60, 0.20)',
+          },
+        ],
+      ]}
+    >
       <TouchableOpacity
         style={[styles.textContainer, isFullScreen && { paddingRight: 0 }]}
         onPress={() => onPressVerse?.(verse)}
         activeOpacity={0.65}
       >
-        <View style={[styles.verseNumberBadge, { backgroundColor: colors.glassPill, borderColor: colors.versePillBorder }]}>
-          <Text style={[styles.verseNumber, { color: colors.tint, fontSize: fontSize - 5 }]}>
+        <View
+          style={[
+            styles.verseNumberBadge,
+            {
+              backgroundColor: isHighlighted ? colors.gold : colors.glassPill,
+              borderColor: isHighlighted ? colors.gold : colors.versePillBorder,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.verseNumber,
+              {
+                color: isHighlighted ? '#000000' : colors.tint,
+                fontSize: fontSize - 5,
+                fontWeight: isHighlighted ? '800' : '700',
+              },
+            ]}
+          >
             {verse.verse}
           </Text>
         </View>
@@ -44,6 +75,7 @@ export const VerseItem: React.FC<VerseItemProps> = ({
               color: colors.text,
               fontSize: fontSize,
               lineHeight: fontSize * 1.55,
+              fontWeight: isHighlighted ? '600' : '400',
             },
           ]}
         >
@@ -92,6 +124,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
+  highlightedContainer: {
+    borderRadius: 12,
+    marginHorizontal: 8,
+    marginVertical: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
   fullPageContainer: {
     paddingVertical: 10,
     paddingHorizontal: 18,
@@ -103,8 +142,9 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   verseNumberBadge: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+    flexDirection: 'row',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 6,
     borderWidth: StyleSheet.hairlineWidth,
     marginRight: 10,

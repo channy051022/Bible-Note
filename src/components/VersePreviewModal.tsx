@@ -19,7 +19,7 @@ interface VersePreviewModalProps {
   passage: PassageDetails | null;
   isLoading?: boolean;
   onClose: () => void;
-  onNavigateToReader?: (bookId: number, chapter: number) => void;
+  onNavigateToReader?: (bookId: number, chapter: number, verse?: number) => void;
   onInsertVerse?: (passage: PassageDetails) => void;
 }
 
@@ -149,7 +149,7 @@ export const VersePreviewModal: React.FC<VersePreviewModalProps> = ({
                       ]}
                       onPress={() => {
                         onClose();
-                        onNavigateToReader(passage.ref.bookId, passage.ref.chapter);
+                        onNavigateToReader(passage.ref.bookId, passage.ref.chapter, passage.ref.startVerse);
                       }}
                       activeOpacity={0.8}
                     >

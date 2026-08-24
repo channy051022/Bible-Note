@@ -119,11 +119,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="plans"
+        name="devotion"
         options={{
-          title: 'Plans',
+          title: 'Devotion',
+          headerTitle: 'Daily Devotion',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={23} color={color} />
+            <Ionicons name={focused ? 'heart' : 'heart-outline'} size={23} color={color} />
           ),
         }}
       />

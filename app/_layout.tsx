@@ -227,19 +227,19 @@ function RootNavigationLayout() {
         />
 
         <Stack.Screen
-          name="plan/[id]"
+          name="devotion/[id]"
           options={{
             headerShown: true,
-            title: 'Reading Plan',
+            title: 'Daily Devotion',
           }}
         />
 
         <Stack.Screen
-          name="plan/new"
+          name="devotion/new"
           options={{
             presentation: 'modal',
             headerShown: true,
-            title: 'Create Reading Plan',
+            title: 'Create Devotion',
           }}
         />
 

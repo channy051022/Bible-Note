@@ -20,12 +20,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
 import { BibleRepo } from '../../src/db/bibleRepo';
 import { NotesRepo } from '../../src/db/notesRepo';
-import { PlansRepo } from '../../src/db/plansRepo';
+import { DevotionsRepo } from '../../src/db/devotionsRepo';
 import { Note } from '../../src/types/note';
 import { getItem, setItem, StorageKeys } from '../../src/utils/storage';
 import { BibleVersion, Book, Verse } from '../../src/types/bible';
 import { getTodayVerseRef, DailyVerseRef } from '../../src/constants/VerseOfTheDay';
-import { ReadingPlan, ReadingPlanDay } from '../../src/types/plan';
+import { Devotion, DevotionStreakInfo, DevotionUserEntry } from '../../src/types/devotion';
+import { getTodayDevotion } from '../../src/data/devotionsData';
 import { AnimatedMascot } from '../../src/components/AnimatedMascot';
 import { DailyPrayer, DEFAULT_DAILY_PRAYER, PRAYER_TEMPLATES } from '../../src/types/prayer';
 import { StoryShareModal } from '../../src/components/StoryShareModal';
@@ -48,9 +49,15 @@ export default function HomeScreen() {
   const [lastReadBook, setLastReadBook] = useState<Book | null>(null);
   const [lastReadChapter, setLastReadChapter] = useState<number>(1);
 
-  // Active Reading Plan state
-  const [activePlan, setActivePlan] = useState<ReadingPlan | null>(null);
-  const [completedPlanDays, setCompletedPlanDays] = useState<number[]>([]);
+  // Today's Devotion & Streak state
+  const [todayDevotion, setTodayDevotion] = useState<Devotion>(getTodayDevotion());
+  const [todayDevotionEntry, setTodayDevotionEntry] = useState<DevotionUserEntry | null>(null);
+  const [devotionStreak, setDevotionStreak] = useState<DevotionStreakInfo>({
+    currentStreak: 0,
+    longestStreak: 0,
+    totalCompleted: 0,
+    encouragingMessage: 'Keep walking with God.',
+  });
 
   // Recent Notes state
   const [recentNotes, setRecentNotes] = useState<Note[]>([]);
@@ -117,18 +124,13 @@ export default function HomeScreen() {
       setLastReadBook(lrBook || null);
       setLastReadChapter(savedChapter);
 
-      // 3. Fetch Active Reading Plan progress from SQLite
-      const userPlans = await PlansRepo.getUserPlans(db);
-      if (userPlans.length > 0) {
-        const savedPlanId = getItem<string>(StorageKeys.ACTIVE_PLAN_ID, '');
-        const targetPlan = userPlans.find((p) => p.id === savedPlanId) || userPlans[0];
-        setActivePlan(targetPlan);
-        const completed = await PlansRepo.getCompletedDays(db, targetPlan.id);
-        setCompletedPlanDays(completed);
-      } else {
-        setActivePlan(null);
-        setCompletedPlanDays([]);
-      }
+      // 3. Fetch Today's Devotion & Streak from SQLite
+      const todayDev = getTodayDevotion();
+      setTodayDevotion(todayDev);
+      const devEntry = await DevotionsRepo.getUserEntry(db, todayDev.id);
+      setTodayDevotionEntry(devEntry);
+      const streak = await DevotionsRepo.getDevotionStreak(db);
+      setDevotionStreak(streak);
 
       // 4. Fetch Recent Study Notes (latest 3)
       const allNotes = await NotesRepo.getAllNotes(db);
@@ -205,6 +207,7 @@ export default function HomeScreen() {
       params: {
         bookId: dailyVerse.book.id.toString(),
         chapter: dailyVerse.verse.chapter.toString(),
+        verse: dailyVerse.verse.verse.toString(),
       },
     });
   };
@@ -221,13 +224,6 @@ export default function HomeScreen() {
       },
     });
   };
-
-  const planProgressPercent = activePlan && activePlan.durationDays > 0
-    ? Math.round((completedPlanDays.length / activePlan.durationDays) * 100)
-    : 0;
-
-  // Next incomplete day for reading plan
-  const nextIncompleteDay = activePlan?.days.find((d: ReadingPlanDay) => !completedPlanDays.includes(d.day)) || activePlan?.days[0];
 
   return (
     <ScrollView
@@ -337,77 +333,88 @@ export default function HomeScreen() {
         </TouchableOpacity>
       )}
 
-
-      {/* 5. Active Reading Plan Card */}
+      {/* 5. Today's Devotion Card (Aligned with Daily Verse) */}
       <View style={styles.sectionBlock}>
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Reading Plan</Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/plans')}>
-            <Text style={[styles.sectionActionText, { color: colors.tint }]}>View All Plans ➔</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Daily Devotion</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/devotion')}>
+            <Text style={[styles.sectionActionText, { color: colors.tint }]}>All Devotions ➔</Text>
           </TouchableOpacity>
         </View>
 
-        {activePlan ? (
-          <TouchableOpacity
-            style={[styles.planCard, { backgroundColor: colors.glassCard, borderColor: colors.border }]}
-            onPress={() => router.push({ pathname: '/plan/[id]', params: { id: activePlan.id } })}
-            activeOpacity={0.8}
-          >
-            <View style={styles.planCardTop}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.planCardTitle, { color: colors.text }]}>{activePlan.title}</Text>
-                <Text style={[styles.planCardDesc, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {nextIncompleteDay ? `Today: Day ${nextIncompleteDay.day} • ${nextIncompleteDay.title}` : 'Plan Completed! 🎉'}
-                </Text>
-              </View>
-              <View style={[styles.planPercentBadge, { backgroundColor: colors.glassHighlight }]}>
-                <Text style={[styles.planPercentText, { color: colors.gold }]}>{planProgressPercent}%</Text>
-              </View>
+        <TouchableOpacity
+          style={[
+            styles.devotionCard,
+            {
+              backgroundColor: colors.glassCard,
+              borderColor: todayDevotionEntry?.isCompleted ? colors.success : colors.border,
+            },
+          ]}
+          onPress={() =>
+            router.push({
+              pathname: '/devotion/[id]',
+              params: { id: todayDevotion.id },
+            })
+          }
+          activeOpacity={0.8}
+        >
+          <View style={styles.devotionCardHeader}>
+            <View style={[styles.devotionBadge, { backgroundColor: colors.tintLight }]}>
+              <Ionicons name="sparkles" size={11} color={colors.tint} style={{ marginRight: 4 }} />
+              <Text style={[styles.devotionBadgeText, { color: colors.tint }]}>TODAY'S DEVOTION</Text>
             </View>
-
-            {/* Progress Bar */}
-            <View style={[styles.planProgressBarBg, { backgroundColor: colors.glassInput }]}>
-              <View
-                style={[
-                  styles.planProgressBarFill,
-                  { backgroundColor: colors.success, width: `${planProgressPercent}%` },
-                ]}
-              />
+            <View style={styles.devotionMetaRight}>
+              <Text style={[styles.devotionTimeText, { color: colors.textTertiary }]}>
+                {todayDevotion.estimatedReadingMinutes} min read
+              </Text>
+              {todayDevotionEntry?.isCompleted && (
+                <View style={[styles.devotionDoneBadge, { backgroundColor: `${colors.success}20` }]}>
+                  <Ionicons name="checkmark-circle" size={12} color={colors.success} style={{ marginRight: 3 }} />
+                  <Text style={[styles.devotionDoneText, { color: colors.success }]}>Done</Text>
+                </View>
+              )}
             </View>
+          </View>
 
-            {nextIncompleteDay && (
-              <View style={styles.planReadingsRow}>
-                <View style={styles.planPassages}>
-                  {nextIncompleteDay.readings.map((r: { passage: string }, idx: number) => (
-                    <Text key={idx} style={[styles.planPassagePill, { color: colors.tint }]}>
-                      📖 {r.passage}
-                    </Text>
-                  ))}
-                </View>
-                <View style={[styles.planStartBtn, { backgroundColor: colors.tint }]}>
-                  <Text style={styles.planStartBtnText}>Day {nextIncompleteDay.day}</Text>
-                  <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
-                </View>
-              </View>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.planCard, { backgroundColor: colors.glassCard, borderColor: colors.border, alignItems: 'center', paddingVertical: 20 }]}
-            onPress={() => router.push('/plan/new')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="calendar-outline" size={28} color={colors.tint} style={{ marginBottom: 6 }} />
-            <Text style={[styles.planCardTitle, { color: colors.text }]}>Start a Reading Plan</Text>
-            <Text style={[styles.planCardDesc, { color: colors.textSecondary, textAlign: 'center', marginBottom: 12 }]}>
-              Create a customized plan to read the Gospels, New Testament, or any Bible book.
+          <Text style={[styles.devotionTitleText, { color: colors.text }]}>{todayDevotion.title}</Text>
+
+          <View style={styles.devotionVerseRow}>
+            <Text style={[styles.devotionVerseText, { color: colors.tint }]}>
+              📖 {todayDevotion.scriptureCitation}
             </Text>
-            <View style={[styles.planStartBtn, { backgroundColor: colors.tint }]}>
-              <Ionicons name="add" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
-              <Text style={styles.planStartBtnText}>Create Plan</Text>
+            <View style={[styles.devotionCatPill, { backgroundColor: colors.glassInput }]}>
+              <Text style={[styles.devotionCatText, { color: colors.textSecondary }]}>
+                {todayDevotion.category}
+              </Text>
             </View>
-          </TouchableOpacity>
-        )}
+          </View>
+
+          <Text style={[styles.devotionPreviewText, { color: colors.textSecondary }]} numberOfLines={2}>
+            "{todayDevotion.reflectionContent.replace(/\n+/g, ' ')}"
+          </Text>
+
+          <View style={[styles.devotionFooter, { borderTopColor: colors.border }]}>
+            <View style={styles.devotionStreakSnippet}>
+              <Text style={{ fontSize: 13, marginRight: 4 }}>🔥</Text>
+              <Text style={[styles.devotionStreakSnippetText, { color: colors.gold }]}>
+                {devotionStreak.currentStreak > 0
+                  ? `${devotionStreak.currentStreak} Day Devotion Streak`
+                  : 'Start streak today'}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.devotionStartBtn,
+                { backgroundColor: todayDevotionEntry?.isCompleted ? colors.success : colors.tint },
+              ]}
+            >
+              <Text style={styles.devotionStartBtnText}>
+                {todayDevotionEntry?.isCompleted ? 'Read Again →' : 'Start Devotion →'}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* 6. Recent Study Notes */}
@@ -894,7 +901,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  planCard: {
+  devotionCard: {
     padding: 16,
     borderRadius: 18,
     borderWidth: 1,
@@ -904,67 +911,100 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  planCardTop: {
+  devotionCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  planCardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 2,
+  devotionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  planCardDesc: {
-    fontSize: 13,
+  devotionBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
-  planPercentBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginLeft: 8,
+  devotionMetaRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  planPercentText: {
-    fontSize: 12,
+  devotionTimeText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  devotionDoneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  devotionDoneText: {
+    fontSize: 9,
     fontWeight: '800',
   },
-  planProgressBarBg: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
+  devotionTitleText: {
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    marginBottom: 6,
+  },
+  devotionVerseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  devotionVerseText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  devotionCatPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  devotionCatText: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  devotionPreviewText: {
+    fontSize: 13,
+    lineHeight: 18,
     marginBottom: 12,
   },
-  planProgressBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  planReadingsRow: {
+  devotionFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  planPassages: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    flex: 1,
-  },
-  planPassagePill: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginRight: 10,
-  },
-  planStartBtn: {
+  devotionStreakSnippet: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  devotionStreakSnippetText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  devotionStartBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 10,
   },
-  planStartBtnText: {
+  devotionStartBtnText: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
-    marginRight: 2,
   },
   emptyNoteCard: {
     padding: 24,

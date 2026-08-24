@@ -107,28 +107,41 @@ export async function initializeDatabase(db: SQLiteDatabase): Promise<void> {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
-      -- 4. Reading Plan Progress Table
-      CREATE TABLE IF NOT EXISTS reading_progress (
-        plan_id TEXT NOT NULL,
-        day INTEGER NOT NULL,
-        completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (plan_id, day)
-      );
-
-      -- 5. User Reading Plans Table
-      CREATE TABLE IF NOT EXISTS user_plans (
+      -- 4. User Devotions Table
+      CREATE TABLE IF NOT EXISTS user_devotions (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
-        description TEXT,
-        duration_days INTEGER NOT NULL,
-        category TEXT,
-        days_json TEXT NOT NULL,
+        scripture_citation TEXT NOT NULL,
+        scripture_text TEXT NOT NULL,
+        book_id INTEGER,
+        chapter INTEGER,
+        verse INTEGER,
+        category TEXT NOT NULL,
+        reflection_content TEXT NOT NULL,
+        reflection_question TEXT NOT NULL,
+        prayer TEXT NOT NULL,
+        estimated_reading_minutes INTEGER DEFAULT 3,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 5. Devotion User Entries (Reflections, Answers, Prayers, Favorites, Completion)
+      CREATE TABLE IF NOT EXISTS devotion_entries (
+        devotion_id TEXT PRIMARY KEY,
+        user_answer TEXT,
+        user_reflection TEXT,
+        user_prayer TEXT,
+        is_completed INTEGER DEFAULT 0,
+        completed_at DATETIME,
+        is_favorite INTEGER DEFAULT 0,
+        favorited_at DATETIME,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
       -- Fast Indexes
       CREATE INDEX IF NOT EXISTS idx_bookmarks_lookup ON bookmarks(book_id, chapter, verse);
       CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag);
+      CREATE INDEX IF NOT EXISTS idx_devotion_entries_fav ON devotion_entries(is_favorite);
+      CREATE INDEX IF NOT EXISTS idx_devotion_entries_comp ON devotion_entries(is_completed);
     `);
 
     // Ensure notes_fts exists

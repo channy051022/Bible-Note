@@ -28,12 +28,21 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { getItem, StorageKeys } from '../../src/utils/storage';
 
 export default function EBibleScreen() {
-  const params = useLocalSearchParams<{ bookId?: string | string[]; chapter?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    bookId?: string | string[];
+    chapter?: string | string[];
+    verse?: string | string[];
+    targetVerse?: string | string[];
+  }>();
   const router = useRouter();
   const db = useSQLiteContext();
   const { colors } = useTheme();
   const [fontSize, setFontSize] = useState<number>(() => getItem<number>(StorageKeys.FONT_SIZE, 18));
   const flatListRef = useRef<FlatList<Verse>>(null);
+
+  // Target verse highlight & auto-scroll states
+  const [highlightedVerse, setHighlightedVerse] = useState<number | null>(null);
+  const [pendingScrollVerse, setPendingScrollVerse] = useState<number | null>(null);
 
   // Sync font size whenever user returns from Settings
   useFocusEffect(
@@ -71,10 +80,14 @@ export default function EBibleScreen() {
     toggleBookmark,
   } = useBiblePassage();
 
-  // Listen to params from Picker or Search
+  // Listen to params from Picker, Search, Devotions, Bookmarks, Alarms, or Notes
   useEffect(() => {
     const rawBookId = Array.isArray(params.bookId) ? params.bookId[0] : params.bookId;
     const rawChapter = Array.isArray(params.chapter) ? params.chapter[0] : params.chapter;
+    const rawVerse = Array.isArray(params.verse)
+      ? params.verse[0]
+      : (params.verse || (Array.isArray(params.targetVerse) ? params.targetVerse[0] : params.targetVerse));
+
     if (rawBookId && rawChapter) {
       const pBook = parseInt(rawBookId, 10);
       const pChap = parseInt(rawChapter, 10);
@@ -82,14 +95,46 @@ export default function EBibleScreen() {
         setPassage(pBook, pChap);
       }
     }
-  }, [params.bookId, params.chapter, setPassage]);
 
-  // Scroll to top whenever chapter changes
-  useEffect(() => {
-    if (flatListRef.current && verses.length > 0) {
-      flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+    if (rawVerse) {
+      const pVerse = parseInt(rawVerse, 10);
+      if (!isNaN(pVerse)) {
+        setHighlightedVerse(pVerse);
+        setPendingScrollVerse(pVerse);
+      }
     }
-  }, [bookId, chapter, version, verses.length]);
+  }, [params.bookId, params.chapter, params.verse, params.targetVerse, setPassage]);
+
+  // Auto-scroll to targeted/searched verse when verses are loaded
+  useEffect(() => {
+    if (!pendingScrollVerse) {
+      if (flatListRef.current && verses.length > 0 && !highlightedVerse) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
+      return;
+    }
+
+    if (verses.length > 0) {
+      const targetIndex = verses.findIndex((v) => v.verse === pendingScrollVerse);
+      if (targetIndex >= 0) {
+        const timer = setTimeout(() => {
+          try {
+            flatListRef.current?.scrollToIndex({
+              index: targetIndex,
+              animated: true,
+              viewPosition: 0.22, // Place comfortably near top
+            });
+          } catch {
+            const approxOffset = Math.max(0, targetIndex * 70);
+            flatListRef.current?.scrollToOffset({ offset: approxOffset, animated: true });
+          }
+          setPendingScrollVerse(null);
+        }, 120);
+
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [verses, pendingScrollVerse, highlightedVerse]);
 
   // Quick bottom search handler
   useEffect(() => {
@@ -124,8 +169,15 @@ export default function EBibleScreen() {
 
   const handleJumpToSearchMatch = (match: BibleSearchMatch) => {
     setPassage(match.book_id, match.chapter);
+    if (match.verse) {
+      setHighlightedVerse(match.verse);
+      setPendingScrollVerse(match.verse);
+    } else {
+      setHighlightedVerse(null);
+    }
     setSearchQuery('');
     setShowSearchResults(false);
+    setIsSearchExpanded(false);
   };
 
   const handleAddNoteForVerse = (verse: Verse) => {
@@ -423,15 +475,30 @@ export default function EBibleScreen() {
           ref={flatListRef}
           data={verses}
           keyExtractor={(item) => item.id.toString()}
+          onScrollToIndexFailed={(info) => {
+            const approxOffset = Math.max(0, info.index * (info.averageItemLength || 70));
+            flatListRef.current?.scrollToOffset({ offset: approxOffset, animated: true });
+            setTimeout(() => {
+              flatListRef.current?.scrollToIndex({
+                index: info.index,
+                animated: true,
+                viewPosition: 0.22,
+              });
+            }, 100);
+          }}
           renderItem={({ item }) => (
             <VerseItem
               verse={item}
               fontSize={fontSize}
               isBookmarked={bookmarks.has(item.verse)}
+              isHighlighted={highlightedVerse === item.verse}
               isFullScreen={isFullScreen}
               onToggleBookmark={toggleBookmark}
               onAddNote={handleAddNoteForVerse}
-              onPressVerse={setReadingVerse}
+              onPressVerse={(v) => {
+                setReadingVerse(v);
+                setHighlightedVerse(v.verse);
+              }}
             />
           )}
           contentContainerStyle={styles.versesList}

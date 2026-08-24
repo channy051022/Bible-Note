@@ -144,11 +144,15 @@ export default function NoteDetailScreen() {
   };
 
   // Navigate to reader screen when user wants to read full chapter
-  const handleNavigateToReader = (bookId: number, chapter: number) => {
+  const handleNavigateToReader = (bookId: number, chapter: number, verse?: number) => {
     closeVersePreview();
     router.replace({
       pathname: '/(tabs)/bible',
-      params: { bookId: bookId.toString(), chapter: chapter.toString() },
+      params: {
+        bookId: bookId.toString(),
+        chapter: chapter.toString(),
+        verse: verse ? verse.toString() : '1',
+      },
     });
   };
 
