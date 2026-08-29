@@ -22,23 +22,22 @@ export const WidgetBridgeService = {
       setItem('WIDGET_VERSE_VERSION', version);
       setItem('WIDGET_THEME', theme);
 
-      // 2. Call Native iOS WidgetBridge module to write directly to shared UserDefaults
-      if (Platform.OS === 'ios') {
-        if (NativeModules.WidgetBridge?.setWidgetData) {
-          await NativeModules.WidgetBridge.setWidgetData(
-            citation,
-            text,
-            version,
-            theme,
-            bookId,
-            chapter
-          );
-        } else if (NativeModules.SharedGroupPreferences) {
-          await NativeModules.SharedGroupPreferences.setItem('widget_verse_citation', citation, 'group.com.biblenotes.app');
-          await NativeModules.SharedGroupPreferences.setItem('widget_verse_text', text, 'group.com.biblenotes.app');
-          await NativeModules.SharedGroupPreferences.setItem('widget_verse_version', version, 'group.com.biblenotes.app');
-          await NativeModules.SharedGroupPreferences.setItem('widget_theme', theme, 'group.com.biblenotes.app');
-        }
+      // 2. Call Native WidgetBridge module (iOS & Android) to write to shared storage and trigger widget refresh
+      if (NativeModules.WidgetBridge?.setWidgetData) {
+        await NativeModules.WidgetBridge.setWidgetData(
+          citation,
+          text,
+          version,
+          theme,
+          bookId,
+          chapter
+        );
+      } else if (Platform.OS === 'ios' && NativeModules.SharedGroupPreferences) {
+        // Fallback for iOS if WidgetBridge module is not available
+        await NativeModules.SharedGroupPreferences.setItem('widget_verse_citation', citation, 'group.com.biblenotes.app');
+        await NativeModules.SharedGroupPreferences.setItem('widget_verse_text', text, 'group.com.biblenotes.app');
+        await NativeModules.SharedGroupPreferences.setItem('widget_verse_version', version, 'group.com.biblenotes.app');
+        await NativeModules.SharedGroupPreferences.setItem('widget_theme', theme, 'group.com.biblenotes.app');
       }
 
       console.log(`Native Widget Data Synced: ${citation} (Theme: ${theme})`);
@@ -47,3 +46,4 @@ export const WidgetBridgeService = {
     }
   },
 };
+
